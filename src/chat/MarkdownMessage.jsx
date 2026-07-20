@@ -5,12 +5,15 @@ import 'highlight.js/styles/github-dark.css';
 import Callout from './Callout';
 import CodeBlock from './CodeBlock';
 import Table from './Table';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 export default function MarkdownMessage({ children }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeHighlight]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeHighlight, rehypeKatex]}
       components={{
         p: ({ children: content }) => <p className="my-0 break-words [&+p]:mt-3">{content}</p>,
         a: ({ href, children: content }) => <a href={href} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline decoration-emerald-300 underline-offset-2 transition hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">{content}</a>,
