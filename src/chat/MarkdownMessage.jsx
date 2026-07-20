@@ -7,6 +7,15 @@ import CodeBlock from './CodeBlock';
 import Table from './Table';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+// This helper function catches all typical AI math wrappers and converts them to $ and $$
+const preprocessLaTeX = (content) => {
+  if (typeof content !== 'string') return content;
+  return content
+    .replace(/\\\[/g, '$$$$') // Converts \[ to $$
+    .replace(/\\\]/g, '$$$$') // Converts \] to $$
+    .replace(/\\\(/g, '$')    // Converts \( to $
+    .replace(/\\\)/g, '$');   // Converts \) to $
+};
 
 export default function MarkdownMessage({ children }) {
   return (
