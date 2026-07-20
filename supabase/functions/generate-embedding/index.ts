@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: 'input is required' }, { status: 400, headers: corsHeaders })
     }
 
-    const output = await model.run(input.trim(), { mean_pool: true, normalize: true })
+    const output = await model.run(input.trim(), { mean_pool: true, normalize: true }) as number[];
     return Response.json({ embedding: Array.from(output) }, { headers: corsHeaders })
   } catch (error) {
     console.error('Embedding generation failed', error)

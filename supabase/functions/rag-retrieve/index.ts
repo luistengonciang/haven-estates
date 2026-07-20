@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: 'query is required' }, { status: 400, headers: corsHeaders })
     }
 
-    const output = await model.run(query.trim(), { mean_pool: true, normalize: true })
+    const output = await model.run(query.trim(), { mean_pool: true, normalize: true }) as number[];
     const { data, error } = await supabase.rpc('match_knowledge_documents', {
       query_embedding: Array.from(output),
       match_threshold: 0.25,
