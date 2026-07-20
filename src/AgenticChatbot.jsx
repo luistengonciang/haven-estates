@@ -134,8 +134,8 @@ export default function AgenticChatbot() {
           </button>
         </header>
 
-        <div className="chat-body">
-          <div className="advisor-note"><Sparkles size={14} /> Your private property concierge</div>
+        <div className="chat-body flex flex-col gap-3">
+          <div className="advisor-note !mb-1"><Sparkles size={14} /> Your private property concierge</div>
 
           {messages.map((message, index) => (
             <div className={`flex items-end gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`} key={`${message.role}-${index}`}>
@@ -158,7 +158,7 @@ export default function AgenticChatbot() {
             </div>
           )}
 
-          <div ref={endRef} />
+          <div ref={endRef} className="h-px" />
         </div>
 
         <div className="chat-footer">

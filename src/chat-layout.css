@@ -1,0 +1,24 @@
+/* Keep the chat comfortably sized on desktop while allowing a user-controlled resize. */
+.chat-window {
+  width: clamp(360px, 32vw, 520px);
+  height: min(620px, calc(100vh - 100px));
+  min-width: 320px;
+  min-height: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 100px);
+  resize: both;
+}
+
+.chat-body {
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 550px) {
+  .chat-window {
+    width: calc(100vw - 32px);
+    height: min(600px, calc(100vh - 100px));
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+  }
+}
