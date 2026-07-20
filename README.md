@@ -15,9 +15,17 @@ npm install
 npm run dev
 ```
 
-The AI advisor retrieves relevant sample knowledge from Supabase before sending a response. Copy `.env.example` to `.env.local` and provide the Supabase publishable connection values plus the existing OpenAI model settings.
+The AI advisor retrieves relevant sample knowledge from Supabase before sending a response. Copy `.env.example` to `.env.local` and provide the Supabase publishable connection values. Do not put OpenAI API keys in any `VITE_*` variable because those values are bundled into the browser.
 
-The hosted Supabase project uses the `knowledge_documents` table, pgvector similarity search, and the `rag-retrieve` Edge Function. Sample Bay Area real-estate documents are included in the migration.
+The hosted Supabase project uses the `knowledge_documents` table, pgvector similarity search, and the `rag-retrieve` and `vanguard-chat` Edge Functions. Sample Bay Area real-estate documents are included in the migration.
+
+Configure OpenAI only as a Supabase Edge Function secret:
+
+```bash
+supabase secrets set OPENAI_API_KEY=your_server_side_openai_key
+```
+
+The chat function is locked to `gpt-4o-mini` in server-side code.
 
 ## Authentication
 
@@ -39,4 +47,7 @@ src/
   AgenticChatbot.jsx  Vanguard AI Advisor interface
   main.jsx            React entry point
   styles.css          Responsive application styles
+supabase/
+  functions/
+    vanguard-chat/    Server-side OpenAI chat completion proxy
 ```

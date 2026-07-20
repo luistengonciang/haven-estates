@@ -26,10 +26,7 @@ const statusSteps = [
   'Running predictive ROI algorithms...',
 ];
 
-const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-const model = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
-
-const systemPrompt = `You are Vanguard, an elite AI real estate advisor. Help users analyze property markets, calculate budgets, and find homes. Be data-driven, strategic, polished, and concise. For budget questions, explain hypothetical PITI. Highlight appreciation, neighborhood dynamics, and investment considerations. Never claim access to live MLS data unless the user provides it. Format your responses in clean Markdown when structure helps: concise paragraphs, lists, tables, blockquotes, and fenced code blocks.`;
+const model = 'gpt-4o-mini';
 
 async function retrieveKnowledge(query) {
   if (!supabase || !supabaseConfigReady) return [];
@@ -42,44 +39,22 @@ async function retrieveKnowledge(query) {
   return data?.documents ?? [];
 }
 
-function buildRetrievedContext(documents) {
-  if (!documents.length) return '';
-
-  const sources = documents.map((document, index) => (
-    `[Source ${index + 1}: ${document.title}]\n${document.content}`
-  )).join('\n\n');
-
-  return `\n\nRetrieved knowledge from Supabase. Use it as grounding, do not invent facts beyond it, and mention uncertainty when the sources do not answer the question.\n<retrieved_context>\n${sources}\n</retrieved_context>`;
-}
-
-async function fetchAIResponse(history, signal, retrievedContext = '') {
-  if (!apiKey || apiKey === 'your_actual_openai_api_key_here') {
-    throw new Error('MISSING_KEY');
+async function fetchAIResponse(history, retrievedDocuments = []) {
+  if (!supabase || !supabaseConfigReady) {
+    throw new Error('MISSING_SUPABASE');
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+  const { data, error } = await supabase.functions.invoke('vanguard-chat', {
+    body: {
+      messages: history,
+      documents: retrievedDocuments,
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.7,
-      messages: [
-        { role: 'system', content: `${systemPrompt}${retrievedContext}` },
-        ...history,
-      ],
-    }),
-    signal,
   });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error?.message || 'API_ERROR');
-  }
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 
-  return payload.choices?.[0]?.message?.content || 'I could not generate a response just now. Please try again.';
+  return data?.content || 'I could not generate a response just now. Please try again.';
 }
 
 export default function AgenticChatbot() {
@@ -97,7 +72,6 @@ export default function AgenticChatbot() {
   const [errorState, setErrorState] = useState(null);
   const endRef = useRef(null);
   const timers = useRef([]);
-  const requestRef = useRef(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -105,7 +79,6 @@ export default function AgenticChatbot() {
 
   useEffect(() => () => {
     timers.current.forEach(clearTimeout);
-    requestRef.current?.abort();
   }, []);
 
   const sendMessage = async (value = input) => {
@@ -125,9 +98,6 @@ export default function AgenticChatbot() {
       setTimeout(() => setStatus(statusSteps[2]), 1900),
     ];
 
-    requestRef.current?.abort();
-    requestRef.current = new AbortController();
-
     try {
       let retrievedDocuments = [];
       try {
@@ -138,21 +108,17 @@ export default function AgenticChatbot() {
 
       const response = await fetchAIResponse(
         history,
-        requestRef.current.signal,
-        buildRetrievedContext(retrievedDocuments),
+        retrievedDocuments,
       );
       setMessages((items) => [...items, { role: 'assistant', content: response }]);
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        setErrorState(
-          error.message === 'MISSING_KEY'
-            ? 'Vanguard is not configured yet. Add VITE_OPENAI_API_KEY and restart Vite.'
-            : 'Vanguard could not connect right now. Check the API key, model access, and network connection.',
-        );
-      }
+      setErrorState(
+        error.message === 'MISSING_SUPABASE'
+          ? 'Vanguard is not configured yet. Add the Supabase publishable settings and restart Vite.'
+          : 'Vanguard could not connect right now. Check the Supabase Edge Function secrets, deployment, and network connection.',
+      );
     } finally {
       setThinking(false);
-      requestRef.current = null;
     }
   };
 
