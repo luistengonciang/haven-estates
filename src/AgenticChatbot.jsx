@@ -4,7 +4,9 @@ import {
   ArrowUp,
   Bot,
   LoaderCircle,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -60,6 +62,7 @@ async function fetchAIResponse(history, signal) {
 
 export default function AgenticChatbot() {
   const [open, setOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
     {
@@ -122,13 +125,16 @@ export default function AgenticChatbot() {
 
   return (
     <div className="chatbot">
-      <div className={`chat-window ${open ? 'chat-window-open' : ''}`} aria-hidden={!open}>
+      <div className={`chat-window ${open ? 'chat-window-open' : ''} ${fullscreen ? 'chat-window-fullscreen' : ''}`} aria-hidden={!open}>
         <header className="chat-header">
           <div className="agent-avatar"><Bot size={20} /></div>
           <div>
             <strong>Vanguard AI Advisor</strong>
             <span><i /> Online · {model}</span>
           </div>
+          <button className="icon-button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Exit full screen' : 'Enter full screen'}>
+            {fullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
+          </button>
           <button className="icon-button" onClick={() => setOpen(false)} aria-label="Close chat">
             <X size={20} />
           </button>
