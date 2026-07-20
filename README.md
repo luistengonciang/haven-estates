@@ -15,6 +15,10 @@ npm install
 npm run dev
 ```
 
+The AI advisor retrieves relevant sample knowledge from Supabase before sending a response. Copy `.env.example` to `.env.local` and provide the Supabase publishable connection values plus the existing OpenAI model settings.
+
+The hosted Supabase project uses the `knowledge_documents` table, pgvector similarity search, and the `rag-retrieve` Edge Function. Sample Bay Area real-estate documents are included in the migration.
+
 To create a production build:
 
 ```bash

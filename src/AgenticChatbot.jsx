@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import AIMessageBubble from './chat/AIMessageBubble';
 import MarkdownMessage from './chat/MarkdownMessage';
+import { supabase, supabaseConfigReady } from './lib/supabase';
 
 const quickPrompts = [
   'Analyze market trends',
@@ -30,7 +31,28 @@ const model = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
 
 const systemPrompt = `You are Vanguard, an elite AI real estate advisor. Help users analyze property markets, calculate budgets, and find homes. Be data-driven, strategic, polished, and concise. For budget questions, explain hypothetical PITI. Highlight appreciation, neighborhood dynamics, and investment considerations. Never claim access to live MLS data unless the user provides it. Format your responses in clean Markdown when structure helps: concise paragraphs, lists, tables, blockquotes, and fenced code blocks.`;
 
-async function fetchAIResponse(history, signal) {
+async function retrieveKnowledge(query) {
+  if (!supabase || !supabaseConfigReady) return [];
+
+  const { data, error } = await supabase.functions.invoke('rag-retrieve', {
+    body: { query, matchCount: 5 },
+  });
+
+  if (error) throw error;
+  return data?.documents ?? [];
+}
+
+function buildRetrievedContext(documents) {
+  if (!documents.length) return '';
+
+  const sources = documents.map((document, index) => (
+    `[Source ${index + 1}: ${document.title}]\n${document.content}`
+  )).join('\n\n');
+
+  return `\n\nRetrieved knowledge from Supabase. Use it as grounding, do not invent facts beyond it, and mention uncertainty when the sources do not answer the question.\n<retrieved_context>\n${sources}\n</retrieved_context>`;
+}
+
+async function fetchAIResponse(history, signal, retrievedContext = '') {
   if (!apiKey || apiKey === 'your_actual_openai_api_key_here') {
     throw new Error('MISSING_KEY');
   }
@@ -45,7 +67,7 @@ async function fetchAIResponse(history, signal) {
       model,
       temperature: 0.7,
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: `${systemPrompt}${retrievedContext}` },
         ...history,
       ],
     }),
@@ -107,7 +129,18 @@ export default function AgenticChatbot() {
     requestRef.current = new AbortController();
 
     try {
-      const response = await fetchAIResponse(history, requestRef.current.signal);
+      let retrievedDocuments = [];
+      try {
+        retrievedDocuments = await retrieveKnowledge(message);
+      } catch (retrievalError) {
+        console.warn('Supabase RAG retrieval unavailable:', retrievalError);
+      }
+
+      const response = await fetchAIResponse(
+        history,
+        requestRef.current.signal,
+        buildRetrievedContext(retrievedDocuments),
+      );
       setMessages((items) => [...items, { role: 'assistant', content: response }]);
     } catch (error) {
       if (error.name !== 'AbortError') {
