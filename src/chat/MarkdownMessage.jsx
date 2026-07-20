@@ -5,7 +5,6 @@ import 'highlight.js/styles/github-dark.css';
 import Callout from './Callout';
 import CodeBlock from './CodeBlock';
 import Table from './Table';
-import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
