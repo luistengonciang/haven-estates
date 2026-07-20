@@ -8,6 +8,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import './chatbot.css';
 
 const quickPrompts = [
   'Analyze market trends',
@@ -25,6 +26,37 @@ const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
 const model = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
 
 const systemPrompt = `You are Vanguard, an elite AI real estate advisor. Help users analyze property markets, calculate budgets, and find homes. Be data-driven, strategic, polished, and concise. For budget questions, explain hypothetical PITI. Highlight appreciation, neighborhood dynamics, and investment considerations. Never claim access to live MLS data unless the user provides it.`;
+
+function formatInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={index}>{part.slice(1, -1)}</em>;
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function FormattedMessage({ content }) {
+  const blocks = content.trim().split(/\n\s*\n/);
+
+  return blocks.map((block, index) => {
+    const lines = block.split('\n').filter(Boolean);
+    const isBulletList = lines.every((line) => /^[-*]\s+/.test(line));
+    const isNumberedList = lines.every((line) => /^\d+[.)]\s+/.test(line));
+
+    if (isBulletList) {
+      return <ul key={index}>{lines.map((line, item) => <li key={item}>{formatInline(line.replace(/^[-*]\s+/, ''))}</li>)}</ul>;
+    }
+
+    if (isNumberedList) {
+      return <ol key={index}>{lines.map((line, item) => <li key={item}>{formatInline(line.replace(/^\d+[.)]\s+/, ''))}</li>)}</ol>;
+    }
+
+    return <p key={index}>{lines.map((line, lineIndex) => <span key={lineIndex}>{lineIndex > 0 && <br />}{formatInline(line)}</span>)}</p>;
+  });
+}
 
 async function fetchAIResponse(history, signal) {
   if (!apiKey || apiKey === 'your_actual_openai_api_key_here') {
@@ -138,7 +170,7 @@ export default function AgenticChatbot() {
           {messages.map((message, index) => (
             <div className={`message ${message.role === 'user' ? 'user' : 'ai'}`} key={`${message.role}-${index}`}>
               {message.role !== 'user' && <div className="tiny-avatar"><Bot size={14} /></div>}
-              <p>{message.content}</p>
+              <FormattedMessage content={message.content} />
             </div>
           ))}
 
