@@ -8,6 +8,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import AIMessageBubble from './chat/AIMessageBubble';
+import MarkdownMessage from './chat/MarkdownMessage';
 
 const quickPrompts = [
   'Analyze market trends',
@@ -24,7 +26,7 @@ const statusSteps = [
 const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
 const model = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
 
-const systemPrompt = `You are Vanguard, an elite AI real estate advisor. Help users analyze property markets, calculate budgets, and find homes. Be data-driven, strategic, polished, and concise. For budget questions, explain hypothetical PITI. Highlight appreciation, neighborhood dynamics, and investment considerations. Never claim access to live MLS data unless the user provides it.`;
+const systemPrompt = `You are Vanguard, an elite AI real estate advisor. Help users analyze property markets, calculate budgets, and find homes. Be data-driven, strategic, polished, and concise. For budget questions, explain hypothetical PITI. Highlight appreciation, neighborhood dynamics, and investment considerations. Never claim access to live MLS data unless the user provides it. Format your responses in clean Markdown when structure helps: concise paragraphs, lists, tables, blockquotes, and fenced code blocks.`;
 
 async function fetchAIResponse(history, signal) {
   if (!apiKey || apiKey === 'your_actual_openai_api_key_here') {
@@ -136,23 +138,23 @@ export default function AgenticChatbot() {
           <div className="advisor-note"><Sparkles size={14} /> Your private property concierge</div>
 
           {messages.map((message, index) => (
-            <div className={`message ${message.role === 'user' ? 'user' : 'ai'}`} key={`${message.role}-${index}`}>
+            <div className={`flex items-end gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`} key={`${message.role}-${index}`}>
               {message.role !== 'user' && <div className="tiny-avatar"><Bot size={14} /></div>}
-              <p>{message.content}</p>
+              <AIMessageBubble role={message.role}><MarkdownMessage>{message.content}</MarkdownMessage></AIMessageBubble>
             </div>
           ))}
 
           {thinking && (
-            <div className="message ai thinking">
+            <div className="flex items-end gap-2">
               <div className="tiny-avatar"><Bot size={14} /></div>
-              <p><LoaderCircle className="spin" size={16} /> {status}</p>
+              <div className="flex items-center gap-2 rounded-2xl rounded-tl-md border border-emerald-950/8 bg-white px-4 py-3 text-xs text-slate-600 shadow-sm"><LoaderCircle className="spin" size={16} /> {status}</div>
             </div>
           )}
 
           {errorState && (
-            <div className="message ai">
+            <div className="flex items-end gap-2">
               <div className="tiny-avatar"><AlertTriangle size={14} /></div>
-              <p>{errorState}</p>
+              <div className="max-w-[min(100%,42rem)] rounded-2xl rounded-tl-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">{errorState}</div>
             </div>
           )}
 
