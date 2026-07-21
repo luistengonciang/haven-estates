@@ -1,0 +1,5 @@
+[functions.rag-retrieve]
+verify_jwt = true
+
+[functions.vanguard-chat]
+verify_jwt = true

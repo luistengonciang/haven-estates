@@ -42,7 +42,10 @@ async function fetchAIResponse(history) {
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
 
-  return data?.content || 'I could not generate a response just now. Please try again.';
+  return {
+    content: data?.content || 'I could not generate a response just now. Please try again.',
+    sources: Array.isArray(data?.sources) ? data.sources : [],
+  };
 }
 
 export default function AgenticChatbot() {
@@ -88,11 +91,13 @@ export default function AgenticChatbot() {
 
     try {
       const response = await fetchAIResponse(history);
-      setMessages((items) => [...items, { role: 'assistant', content: response }]);
+      setMessages((items) => [...items, { role: 'assistant', ...response }]);
     } catch (error) {
       setErrorState(
         error.message === 'MISSING_SUPABASE'
           ? 'Vanguard is not configured yet. Add the Supabase publishable settings and restart Vite.'
+          : error.message === 'RETRIEVAL_UNAVAILABLE'
+          ? 'Vanguard could not retrieve its reference data right now. Please try again shortly.'
           : 'Vanguard could not connect right now. Check the Supabase Edge Function secrets, deployment, and network connection.',
       );
     } finally {
@@ -123,7 +128,18 @@ export default function AgenticChatbot() {
           {messages.map((message, index) => (
             <div className={`flex items-end gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`} key={`${message.role}-${index}`}>
               {message.role !== 'user' && <div className="tiny-avatar"><Bot size={14} /></div>}
-              <AIMessageBubble role={message.role}><MarkdownMessage>{message.content}</MarkdownMessage></AIMessageBubble>
+              <div className="max-w-[min(100%,42rem)]">
+                <AIMessageBubble role={message.role}><MarkdownMessage>{message.content}</MarkdownMessage></AIMessageBubble>
+                {message.role === 'assistant' && message.sources?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
+                    {message.sources.map((source, sourceIndex) => (
+                      source.source_url
+                        ? <a key={`${source.id}-${sourceIndex}`} className="rounded-full border border-slate-200 bg-white px-2 py-1 hover:border-emerald-300 hover:text-emerald-800" href={source.source_url} target="_blank" rel="noreferrer">Source {sourceIndex + 1}: {source.title}</a>
+                        : <span key={`${source.id}-${sourceIndex}`} className="rounded-full border border-slate-200 bg-white px-2 py-1">Source {sourceIndex + 1}: {source.title}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
 

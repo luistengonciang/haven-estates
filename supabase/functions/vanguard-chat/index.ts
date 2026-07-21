@@ -34,8 +34,14 @@ Advice rules:
 
 Use Markdown only when it improves readability. Prefer short paragraphs and compact bullets; use a comparison table only for two or more supplied listings.`;
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
-type RetrievedDocument = { title?: string; content?: string };
+type ChatMessage = { role: "user"; content: string };
+type RetrievedDocument = {
+  id?: string;
+  title?: string;
+  content?: string;
+  category?: string;
+  source_url?: string;
+};
 type Listing = {
   id: string;
   title?: string;
@@ -123,7 +129,7 @@ function extractLocation(query: string) {
 function isChatMessage(value: unknown): value is ChatMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
-  return (message.role === "user" || message.role === "assistant") &&
+  return message.role === "user" &&
     typeof message.content === "string" && message.content.trim().length > 0 &&
     message.content.length <= maxMessageCharacters;
 }
@@ -138,6 +144,18 @@ function buildRetrievedContext(documents: RetrievedDocument[]) {
   return sources
     ? `\n\n<retrieved_reference_data>\n${sources}\n</retrieved_reference_data>`
     : "";
+}
+
+function publicSources(documents: RetrievedDocument[]) {
+  return documents.slice(0, maxDocuments).map((document, index) => ({
+    id: document.id ?? `${index + 1}`,
+    title: document.title?.trim() || `Source ${index + 1}`,
+    category: document.category ?? "reference",
+    source_url: document.source_url?.startsWith("https://") ||
+        document.source_url?.startsWith("http://")
+      ? document.source_url
+      : undefined,
+  }));
 }
 
 async function retrieveContext(
@@ -181,6 +199,7 @@ async function retrieveContext(
     0,
   );
   const propertyDocuments = typedListings.map((listing) => ({
+    id: listing.id,
     title: `${compact(listing.title, 90) || "Bataan property"}${
       listing.price ? ` — ${compact(listing.price, 40)}` : ""
     }`,
@@ -200,10 +219,16 @@ async function retrieveContext(
         }`
         : null,
     ].filter(Boolean).join("; "),
+    category: "listing",
+    source_url: listing.source_url,
   }));
   const knowledgeDocuments = ((knowledge ?? []) as KnowledgeDocument[])
     .filter((document) => document.metadata?.place === "Bataan, Philippines")
-    .map((document) => ({ title: document.title, content: document.content }));
+    .map((document) => ({
+      title: document.title,
+      content: document.content,
+      category: "knowledge",
+    }));
   return [...propertyDocuments, ...knowledgeDocuments];
 }
 
@@ -228,9 +253,7 @@ Deno.serve(async (req: Request) => {
     const { messages = [] } = await req.json();
     if (
       !Array.isArray(messages) ||
-      !messages.some((message) =>
-        isChatMessage(message) && message.role === "user"
-      )
+      !messages.some(isChatMessage)
     ) {
       return Response.json({ error: "Valid user messages are required." }, {
         status: 400,
@@ -256,14 +279,20 @@ Deno.serve(async (req: Request) => {
     const latestQuestion = [...safeMessages].reverse().find((message) =>
       message.role === "user"
     )!.content;
-    let retrievedContext = "";
+    let retrievedDocuments: RetrievedDocument[] = [];
     try {
-      retrievedContext = buildRetrievedContext(
-        await retrieveContext(latestQuestion, req.headers.get("authorization")),
+      retrievedDocuments = await retrieveContext(
+        latestQuestion,
+        req.headers.get("authorization"),
       );
     } catch (error) {
       console.error("Vanguard retrieval failed", error);
+      return Response.json({ error: "RETRIEVAL_UNAVAILABLE" }, {
+        status: 503,
+        headers: corsHeaders,
+      });
     }
+    const retrievedContext = buildRetrievedContext(retrievedDocuments);
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -292,6 +321,7 @@ Deno.serve(async (req: Request) => {
       content: payload.choices?.[0]?.message?.content ||
         "I could not generate a response just now. Please try again.",
       model,
+      sources: publicSources(retrievedDocuments),
     }, { headers: corsHeaders });
   } catch (error) {
     console.error("Vanguard chat failed", error);
