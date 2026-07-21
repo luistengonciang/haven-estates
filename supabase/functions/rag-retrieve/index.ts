@@ -12,7 +12,12 @@ const maxQueryCharacters = 2_000;
 const maxMatchCount = 10;
 const maxDocumentCharacters = 1_200;
 
-type RetrievedDocument = { title?: string; content?: string };
+type RetrievedDocument = {
+  title?: string;
+  content?: string;
+  similarity?: number;
+};
+
 type Listing = {
   id: string;
   title?: string;
@@ -24,6 +29,7 @@ type Listing = {
   source_url?: string;
   rank?: number;
 };
+
 type KnowledgeDocument = {
   title?: string;
   content?: string;
@@ -41,14 +47,24 @@ function listingSearchText(query: string) {
   const ignored = new Set([
     "about", "before", "buying", "check", "find", "from", "have", "home",
     "listing", "listings", "property", "properties", "should", "that", "the",
-    "what", "with",
+    "what", "with", "best", "investment", "investments"
   ]);
   const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter(
     (term) => !ignored.has(term),
   ).slice(0, 4);
 
-  // Uses uppercase "OR" for websearch_to_tsquery compatibility
   return terms.length ? terms.join(" OR ") : query;
+}
+
+function knowledgeQueryText(query: string): string {
+  const cleaned = query
+    .replace(/(?:under|below|less than|up to|max(?:imum)?(?: budget)?)\s*(?:₱|php|p)?\s*[\d,.]+\s*(million|m|k)?/gi, "")
+    .replace(/[₱$]/g, "")
+    .replace(/\b\d+(?:k|m|million)?\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned.length > 3 ? `${cleaned} bataan property investment guide` : "bataan property investment guide";
 }
 
 function extractMaxPrice(query: string) {
@@ -73,7 +89,6 @@ function extractPropertyType(query: string) {
 }
 
 function extractLocation(query: string) {
-  // All 12 Municipalities/Cities in Bataan
   const locations = [
     "abucay", "bagac", "balanga", "dinalupihan", "hermosa", "limay",
     "mariveles", "morong", "orani", "orion", "pilar", "samal",
@@ -81,35 +96,26 @@ function extractLocation(query: string) {
   return locations.find((location) => query.toLowerCase().includes(location)) ?? null;
 }
 
-/**
- * Prevents context starvation by ensuring high-volume retrieval sources (e.g. listings)
- * cannot completely push out domain knowledge context.
- */
 function balanceRetrievedContext(
   listings: RetrievedDocument[],
   knowledge: RetrievedDocument[],
   totalLimit: number = 5,
   reservedKnowledgeSlots: number = 2,
 ): RetrievedDocument[] {
-  // 1. Enforce reserved slots floor for knowledge base
   const maxListingSlots = Math.max(0, totalLimit - reservedKnowledgeSlots);
 
-  // 2. Initial allocation
   let selectedListings = listings.slice(0, maxListingSlots);
   let selectedKnowledge = knowledge.slice(0, reservedKnowledgeSlots);
 
-  // 3. Dynamic Backfill: Overflow unused capacity to whichever source has remaining data
   let remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
 
   if (remainingBudget > 0) {
-    // Backfill with extra knowledge docs first
     const extraKnowledge = knowledge.slice(
       selectedKnowledge.length,
       selectedKnowledge.length + remainingBudget,
     );
     selectedKnowledge = [...selectedKnowledge, ...extraKnowledge];
 
-    // If still under capacity, backfill with extra listings
     remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
     if (remainingBudget > 0) {
       const extraListings = listings.slice(
@@ -120,7 +126,6 @@ function balanceRetrievedContext(
     }
   }
 
-  // Listing docs placed first for consistent citation order in LLM responses
   return [...selectedListings, ...selectedKnowledge];
 }
 
@@ -162,7 +167,8 @@ Deno.serve(async (req: Request) => {
     });
 
     const embeddingModel = new Supabase.ai.Session("gte-small");
-    const embedding = await embeddingModel.run(query, {
+    const semanticKnowledgeQuery = knowledgeQueryText(query);
+    const embedding = await embeddingModel.run(semanticKnowledgeQuery, {
       mean_pool: true,
       normalize: true,
     }) as number[];
@@ -180,7 +186,7 @@ Deno.serve(async (req: Request) => {
       }),
       supabase.rpc("match_knowledge_documents", {
         query_embedding: Array.from(embedding),
-        match_threshold: 0.35,
+        match_threshold: 0.15,
         match_count: matchCount,
       }),
     ]);
@@ -188,44 +194,64 @@ Deno.serve(async (req: Request) => {
     if (listingsError) throw listingsError;
     if (knowledgeError) throw knowledgeError;
 
+    let finalKnowledgeData = (knowledge ?? []) as KnowledgeDocument[];
+
+    if (finalKnowledgeData.length === 0) {
+      const { data: fallbackKnowledge } = await supabase
+        .from("knowledge_documents")
+        .select("title, content, metadata")
+        .limit(2);
+      if (fallbackKnowledge) {
+        finalKnowledgeData = fallbackKnowledge.map((doc) => ({
+          ...doc,
+          similarity: 0.50, // Default baseline for fallback items
+        })) as KnowledgeDocument[];
+      }
+    }
+
     const typedListings = (listings ?? []) as Listing[];
     const highestRank = Math.max(
       ...typedListings.map((listing) => Number(listing.rank) || 0),
       0,
     );
 
-    const propertyDocuments: RetrievedDocument[] = typedListings.map((listing) => ({
-      title: `${compact(listing.title, 90) || "Bataan property"}${
-        listing.price ? ` — ${compact(listing.price, 40)}` : ""
-      }`,
-      content: [
-        "Bataan listing record:",
-        listing.price ? `price ${compact(listing.price, 40)}` : null,
-        listing.bedrooms ? `${compact(listing.bedrooms, 20)} bedrooms` : null,
-        listing.bathrooms ? `${compact(listing.bathrooms, 20)} bathrooms` : null,
-        listing.floor_area ? `area ${compact(listing.floor_area, 30)}` : null,
-        `location/details ${compact(listing.location, 360)}`,
-        listing.source_url
-          ? `original source ${compact(listing.source_url, 180)}`
-          : null,
-        highestRank > 0
-          ? `relative lexical match ${formatPercentage(Number(listing.rank) || 0, highestRank)}`
-          : null,
-      ].filter(Boolean).join("; ").slice(0, maxDocumentCharacters),
+    const propertyDocuments: RetrievedDocument[] = typedListings.map((listing) => {
+      const rankVal = Number(listing.rank) || 0;
+      const normalizedScore = highestRank > 0 ? rankVal / highestRank : 0.8;
+
+      return {
+        title: `${compact(listing.title, 90) || "Bataan property"}${
+          listing.price ? ` — ${compact(listing.price, 40)}` : ""
+        }`,
+        content: [
+          "Bataan listing record:",
+          listing.price ? `price ${compact(listing.price, 40)}` : null,
+          listing.bedrooms ? `${compact(listing.bedrooms, 20)} bedrooms` : null,
+          listing.bathrooms ? `${compact(listing.bathrooms, 20)} bathrooms` : null,
+          listing.floor_area ? `area ${compact(listing.floor_area, 30)}` : null,
+          `location/details ${compact(listing.location, 360)}`,
+          listing.source_url
+            ? `original source ${compact(listing.source_url, 180)}`
+            : null,
+          highestRank > 0
+            ? `relative lexical match ${formatPercentage(rankVal, highestRank)}`
+            : null,
+        ].filter(Boolean).join("; ").slice(0, maxDocumentCharacters),
+        similarity: normalizedScore, // Enables UI badge rendering
+      };
+    });
+
+    const knowledgeDocuments: RetrievedDocument[] = finalKnowledgeData.map((document) => ({
+      title: document.title,
+      content: document.content?.slice(0, maxDocumentCharacters),
+      similarity: typeof document.similarity === "number" ? document.similarity : 0.5, // Enables UI badge rendering
     }));
 
-    const knowledgeDocuments: RetrievedDocument[] = ((knowledge ?? []) as KnowledgeDocument[])
-      .map((document) => ({
-        title: document.title,
-        content: document.content?.slice(0, maxDocumentCharacters),
-      }));
-
-    // Dynamic slot allocation (e.g. 3 listings + 2 knowledge base docs for a 5-doc limit)
     const documents = balanceRetrievedContext(
       propertyDocuments,
       knowledgeDocuments,
       matchCount,
-      2, // Floor reserved for knowledge base context
+      2,
     );
 
     return Response.json({ documents }, { headers: corsHeaders });
