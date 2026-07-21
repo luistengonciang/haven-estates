@@ -38,6 +38,39 @@ const listingSearchText = (query: string) => {
   ) => !ignored.has(term)).slice(0, 4);
   return terms.length ? terms.join(" or ") : query;
 };
+const extractMaxPrice = (query: string) => {
+  const match = query.toLowerCase().match(
+    /(?:under|below|less than|up to|max(?:imum)?(?: budget)?)\s*(?:₱|php|p)?\s*([\d,.]+)\s*(million|m|k)?/i,
+  );
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return null;
+  const multiplier =
+    match[2]?.toLowerCase() === "million" || match[2]?.toLowerCase() === "m"
+      ? 1_000_000
+      : match[2]?.toLowerCase() === "k"
+      ? 1_000
+      : 1;
+  return amount * multiplier;
+};
+const extractPropertyType = (query: string) =>
+  /\b(home|house|houses|villa|townhouse)\b/i.test(query) ? "house" : null;
+const extractLocation = (query: string) => {
+  const locations = [
+    "abucay",
+    "balanga",
+    "dinalupihan",
+    "hermosa",
+    "limay",
+    "mariveles",
+    "morong",
+    "orani",
+    "pilar",
+    "samal",
+  ];
+  return locations.find((location) => query.toLowerCase().includes(location)) ??
+    null;
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -76,7 +109,10 @@ Deno.serve(async (req: Request) => {
     ] = await Promise.all([
       supabase.rpc("search_bataan_properties", {
         search_text: listingSearchText(query),
-        match_count: 3,
+        match_count: 10,
+        max_price: extractMaxPrice(query),
+        property_type: extractPropertyType(query),
+        location_filter: extractLocation(query),
       }),
       supabase.rpc("match_knowledge_documents", {
         query_embedding: Array.from(embedding),
