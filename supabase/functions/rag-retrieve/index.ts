@@ -8,11 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const model = new Supabase.ai.Session("gte-small");
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-);
 const maxQueryCharacters = 1_000;
 const compact = (value: unknown, limit: number) =>
   String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
@@ -58,6 +53,18 @@ Deno.serve(async (req: Request) => {
         error: "A query of up to 1,000 characters is required.",
       }, { status: 400, headers: corsHeaders });
     }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
+      Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !publishableKey) {
+      throw new Error("Supabase configuration is unavailable");
+    }
+    const authorization = req.headers.get("authorization");
+    const supabase = createClient(supabaseUrl, publishableKey, {
+      global: {
+        headers: authorization ? { Authorization: authorization } : {},
+      },
+    });
     const knowledgeCount = Math.max(1, Math.min(Number(matchCount) || 2, 2));
     const embedding = await model.run(query.trim(), {
       mean_pool: true,
