@@ -29,6 +29,8 @@ supabase secrets set OPENAI_API_KEY=your_server_side_openai_key
 
 The chat function is locked to `gpt-4o-mini` in server-side code.
 
+The chat endpoint performs retrieval server-side; it never accepts source documents from the browser. Keep the Edge Function JWT check enabled and deploy the knowledge-access migration before deploying the updated functions. The manual embedding-backfill endpoint additionally requires a `BACKFILL_ADMIN_TOKEN` Edge Function secret and an `x-backfill-token` request header; it is not intended for browser use.
+
 ## Authentication
 
 Haven uses Supabase Auth for email/password sign-in and sign-up. Authenticated users get a private `profiles` row protected by Row Level Security; users can only read or change their own profile.

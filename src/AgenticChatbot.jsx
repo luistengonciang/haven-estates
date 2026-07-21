@@ -28,18 +28,7 @@ const statusSteps = [
 
 const model = 'gpt-4o-mini';
 
-async function retrieveKnowledge(query) {
-  if (!supabase || !supabaseConfigReady) return [];
-
-  const { data, error } = await supabase.functions.invoke('rag-retrieve', {
-    body: { query, matchCount: 3 },
-  });
-
-  if (error) throw error;
-  return data?.documents ?? [];
-}
-
-async function fetchAIResponse(history, retrievedDocuments = []) {
+async function fetchAIResponse(history) {
   if (!supabase || !supabaseConfigReady) {
     throw new Error('MISSING_SUPABASE');
   }
@@ -47,7 +36,6 @@ async function fetchAIResponse(history, retrievedDocuments = []) {
   const { data, error } = await supabase.functions.invoke('vanguard-chat', {
     body: {
       messages: history,
-      documents: retrievedDocuments,
     },
   });
 
@@ -99,17 +87,7 @@ export default function AgenticChatbot() {
     ];
 
     try {
-      let retrievedDocuments = [];
-      try {
-        retrievedDocuments = await retrieveKnowledge(message);
-      } catch (retrievalError) {
-        console.warn('Supabase RAG retrieval unavailable:', retrievalError);
-      }
-
-      const response = await fetchAIResponse(
-        history,
-        retrievedDocuments,
-      );
+      const response = await fetchAIResponse(history);
       setMessages((items) => [...items, { role: 'assistant', content: response }]);
     } catch (error) {
       setErrorState(
