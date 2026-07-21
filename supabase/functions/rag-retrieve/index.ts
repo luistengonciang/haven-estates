@@ -2,39 +2,41 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
+const model = new Supabase.ai.Session('gte-small')
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')!)
 const compact = (value: unknown, limit: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit)
-
-function relevance(text: string, query: string) {
-  const terms = query.toLowerCase().match(/[a-z]{3,}/g) ?? []
-  const haystack = text.toLowerCase()
-  return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0)
+const asPercentage = (value: number) => Math.round(Math.max(0, Math.min(1, value)) * 100) / 100
+const listingSearchText = (query: string) => {
+  const ignored = new Set(['about', 'before', 'buying', 'check', 'find', 'from', 'have', 'home', 'listing', 'listings', 'property', 'properties', 'should', 'that', 'the', 'what', 'with'])
+  const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((term) => !ignored.has(term)).slice(0, 4)
+  return terms.length ? terms.join(' or ') : query
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
-    const { query } = await req.json()
+    const { query, matchCount = 2 } = await req.json()
     if (typeof query !== 'string' || !query.trim()) return Response.json({ error: 'query is required' }, { status: 400, headers: corsHeaders })
+    const knowledgeCount = Math.max(1, Math.min(Number(matchCount) || 2, 2))
+    const embedding = await model.run(query.trim(), { mean_pool: true, normalize: true }) as number[]
     const [{ data: listings, error: listingsError }, { data: knowledge, error: knowledgeError }] = await Promise.all([
-      supabase.rpc('search_bataan_properties', { search_text: query, match_count: 3 }),
-      supabase.from('knowledge_documents').select('id, title, content, metadata').eq('metadata->>place', 'Bataan, Philippines').limit(6),
+      supabase.rpc('search_bataan_properties', { search_text: listingSearchText(query), match_count: 3 }),
+      supabase.rpc('match_knowledge_documents', { query_embedding: Array.from(embedding), match_threshold: 0.18, match_count: knowledgeCount }),
     ])
     if (listingsError) throw listingsError
     if (knowledgeError) throw knowledgeError
+    const highestListingRank = Math.max(...(listings ?? []).map((listing) => Number(listing.rank) || 0), 0)
     const propertyDocuments = (listings ?? []).map((listing) => ({
       id: `bataan-property:${listing.id}`,
       title: `${compact(listing.title, 90) || 'Bataan property'}${listing.price ? ` — ${compact(listing.price, 40)}` : ''}`,
+      category: 'property-listing',
       content: ['Bataan listing:', listing.price ? `price ${compact(listing.price, 40)}` : null, listing.bedrooms ? `${compact(listing.bedrooms, 20)} bedrooms` : null, listing.bathrooms ? `${compact(listing.bathrooms, 20)} bathrooms` : null, listing.floor_area ? `area ${compact(listing.floor_area, 30)}` : null, `details ${compact(listing.location, 360)}`, listing.source_url ? `source ${compact(listing.source_url, 180)}` : null].filter(Boolean).join('; '),
-      similarity: listing.rank,
-      metadata: { source_url: listing.source_url, source: 'bataan_properties' },
+      similarity: highestListingRank ? asPercentage(Number(listing.rank) / highestListingRank) : 0,
+      metadata: { source_url: listing.source_url, source: 'bataan_properties', match_type: 'relative lexical rank' },
     }))
     const knowledgeDocuments = (knowledge ?? [])
-      .map((document) => ({ ...document, score: relevance(`${document.title} ${document.content}`, query) }))
-      .filter((document) => document.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 2)
-      .map((document) => ({ id: document.id, title: document.title, content: compact(document.content, 700), metadata: document.metadata }))
+      .filter((document) => document.metadata?.place === 'Bataan, Philippines')
+      .map((document) => ({ ...document, similarity: asPercentage(Number(document.similarity) || 0), metadata: { ...document.metadata, match_type: 'cosine similarity' } }))
     return Response.json({ documents: [...propertyDocuments, ...knowledgeDocuments] }, { headers: corsHeaders })
   } catch (error) {
     console.error('RAG retrieval failed', error)
