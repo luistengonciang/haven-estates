@@ -34,8 +34,8 @@ type KnowledgeDocument = {
 const compact = (value: unknown, limit: number) =>
   String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
 
-const asPercentage = (value: number) =>
-  Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
+const formatPercentage = (val: number, maxVal: number) =>
+  maxVal > 0 ? `${Math.round((val / maxVal) * 100)}%` : "0%";
 
 function listingSearchText(query: string) {
   const ignored = new Set([
@@ -46,7 +46,9 @@ function listingSearchText(query: string) {
   const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter(
     (term) => !ignored.has(term),
   ).slice(0, 4);
-  return terms.length ? terms.join(" or ") : query;
+  
+  // Uses uppercase "OR" for websearch_to_tsquery compatibility
+  return terms.length ? terms.join(" OR ") : query;
 }
 
 function extractMaxPrice(query: string) {
@@ -62,18 +64,21 @@ function extractMaxPrice(query: string) {
 }
 
 function extractPropertyType(query: string) {
-  return /\b(home|house|houses|villa|townhouse)\b/i.test(query)
-    ? "house"
-    : null;
+  const q = query.toLowerCase();
+  if (/\b(home|house|houses|villa|townhouse)\b/i.test(q)) return "house";
+  if (/\b(condo|condominium|apartment|unit)\b/i.test(q)) return "condo";
+  if (/\b(lot|land|farm|rawland)\b/i.test(q)) return "lot";
+  if (/\b(commercial|office|warehouse|space)\b/i.test(q)) return "commercial";
+  return null;
 }
 
 function extractLocation(query: string) {
+  // All 12 LGUs in Bataan
   const locations = [
-    "abucay", "balanga", "dinalupihan", "hermosa", "limay",
-    "mariveles", "morong", "orani", "pilar", "samal",
+    "abucay", "bagac", "balanga", "dinalupihan", "hermosa", "limay",
+    "mariveles", "morong", "orani", "orion", "pilar", "samal",
   ];
-  return locations.find((location) => query.toLowerCase().includes(location)) ??
-    null;
+  return locations.find((location) => query.toLowerCase().includes(location)) ?? null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -133,7 +138,8 @@ Deno.serve(async (req: Request) => {
       supabase.rpc("match_knowledge_documents", {
         query_embedding: Array.from(embedding),
         match_threshold: 0.35,
-        match_count: 3,
+        match_count: matchCount, // Dynamic match count
+        // Filter inside RPC via metadata filter if your SQL function supports it
       }),
     ]);
 
@@ -160,16 +166,13 @@ Deno.serve(async (req: Request) => {
         listing.source_url
           ? `original source ${compact(listing.source_url, 180)}`
           : null,
-        highestRank
-          ? `relative lexical match ${
-            asPercentage(Number(listing.rank) / highestRank)
-          }`
+        highestRank > 0
+          ? `relative lexical match ${formatPercentage(Number(listing.rank) || 0, highestRank)}`
           : null,
       ].filter(Boolean).join("; ").slice(0, maxDocumentCharacters),
     }));
 
     const knowledgeDocuments: RetrievedDocument[] = ((knowledge ?? []) as KnowledgeDocument[])
-      .filter((document) => document.metadata?.place === "Bataan, Philippines")
       .map((document) => ({
         title: document.title,
         content: document.content?.slice(0, maxDocumentCharacters),
@@ -182,7 +185,6 @@ Deno.serve(async (req: Request) => {
       matchCount - selectedListings.length,
     );
 
-    // Return Property Listings FIRST for consistent source citation inspection
     const documents = [...selectedListings, ...selectedKnowledge];
 
     return Response.json({ documents }, { headers: corsHeaders });
