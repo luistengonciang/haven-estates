@@ -39,7 +39,12 @@ async function fetchAIResponse(history) {
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    const payload = error.context instanceof Response
+      ? await error.context.clone().json().catch(() => null)
+      : null;
+    throw new Error(payload?.error || error.message);
+  }
   if (data?.error) throw new Error(data.error);
 
   return {

@@ -13,9 +13,13 @@ const maxMatchCount = 10;
 const maxDocumentCharacters = 1_200;
 
 type RetrievedDocument = {
+  id: string;
   title?: string;
   content?: string;
+  category: string;
+  metadata: Record<string, unknown>;
   similarity?: number;
+  source_url?: string;
 };
 
 type Listing = {
@@ -31,8 +35,10 @@ type Listing = {
 };
 
 type KnowledgeDocument = {
+  id: string;
   title?: string;
   content?: string;
+  category?: string;
   metadata?: Record<string, unknown>;
   similarity?: number;
 };
@@ -43,11 +49,34 @@ const compact = (value: unknown, limit: number) =>
 const formatPercentage = (val: number, maxVal: number) =>
   maxVal > 0 ? `${Math.round((val / maxVal) * 100)}%` : "0%";
 
+function safeSourceUrl(value: string | undefined) {
+  return value?.startsWith("https://") || value?.startsWith("http://")
+    ? value
+    : undefined;
+}
+
 function listingSearchText(query: string) {
   const ignored = new Set([
-    "about", "before", "buying", "check", "find", "from", "have", "home",
-    "listing", "listings", "property", "properties", "should", "that", "the",
-    "what", "with", "best", "investment", "investments"
+    "about",
+    "before",
+    "buying",
+    "check",
+    "find",
+    "from",
+    "have",
+    "home",
+    "listing",
+    "listings",
+    "property",
+    "properties",
+    "should",
+    "that",
+    "the",
+    "what",
+    "with",
+    "best",
+    "investment",
+    "investments",
   ]);
   const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter(
     (term) => !ignored.has(term),
@@ -58,13 +87,18 @@ function listingSearchText(query: string) {
 
 function knowledgeQueryText(query: string): string {
   const cleaned = query
-    .replace(/(?:under|below|less than|up to|max(?:imum)?(?: budget)?)\s*(?:₱|php|p)?\s*[\d,.]+\s*(million|m|k)?/gi, "")
+    .replace(
+      /(?:under|below|less than|up to|max(?:imum)?(?: budget)?)\s*(?:₱|php|p)?\s*[\d,.]+\s*(million|m|k)?/gi,
+      "",
+    )
     .replace(/[₱$]/g, "")
     .replace(/\b\d+(?:k|m|million)?\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  return cleaned.length > 3 ? `${cleaned} bataan property investment guide` : "bataan property investment guide";
+  return cleaned.length > 3
+    ? `${cleaned} bataan property investment guide`
+    : "bataan property investment guide";
 }
 
 function extractMaxPrice(query: string) {
@@ -80,20 +114,28 @@ function extractMaxPrice(query: string) {
 }
 
 function extractPropertyType(query: string) {
-  const q = query.toLowerCase();
-  if (/\b(home|house|houses|villa|townhouse)\b/i.test(q)) return "house";
-  if (/\b(condo|condominium|apartment|unit)\b/i.test(q)) return "condo";
-  if (/\b(lot|land|farm|rawland)\b/i.test(q)) return "lot";
-  if (/\b(commercial|office|warehouse|space)\b/i.test(q)) return "commercial";
-  return null;
+  return /\b(home|house|houses|villa|townhouse)\b/i.test(query)
+    ? "house"
+    : null;
 }
 
 function extractLocation(query: string) {
   const locations = [
-    "abucay", "bagac", "balanga", "dinalupihan", "hermosa", "limay",
-    "mariveles", "morong", "orani", "orion", "pilar", "samal",
+    "abucay",
+    "bagac",
+    "balanga",
+    "dinalupihan",
+    "hermosa",
+    "limay",
+    "mariveles",
+    "morong",
+    "orani",
+    "orion",
+    "pilar",
+    "samal",
   ];
-  return locations.find((location) => query.toLowerCase().includes(location)) ?? null;
+  return locations.find((location) => query.toLowerCase().includes(location)) ??
+    null;
 }
 
 function balanceRetrievedContext(
@@ -102,12 +144,14 @@ function balanceRetrievedContext(
   totalLimit: number = 5,
   reservedKnowledgeSlots: number = 2,
 ): RetrievedDocument[] {
-  const maxListingSlots = Math.max(0, totalLimit - reservedKnowledgeSlots);
+  const knowledgeSlots = Math.min(totalLimit, reservedKnowledgeSlots);
+  const maxListingSlots = Math.max(0, totalLimit - knowledgeSlots);
 
   let selectedListings = listings.slice(0, maxListingSlots);
-  let selectedKnowledge = knowledge.slice(0, reservedKnowledgeSlots);
+  let selectedKnowledge = knowledge.slice(0, knowledgeSlots);
 
-  let remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
+  let remainingBudget = totalLimit -
+    (selectedListings.length + selectedKnowledge.length);
 
   if (remainingBudget > 0) {
     const extraKnowledge = knowledge.slice(
@@ -116,7 +160,8 @@ function balanceRetrievedContext(
     );
     selectedKnowledge = [...selectedKnowledge, ...extraKnowledge];
 
-    remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
+    remainingBudget = totalLimit -
+      (selectedListings.length + selectedKnowledge.length);
     if (remainingBudget > 0) {
       const extraListings = listings.slice(
         selectedListings.length,
@@ -126,7 +171,7 @@ function balanceRetrievedContext(
     }
   }
 
-  return [...selectedListings, ...selectedKnowledge];
+  return [...selectedListings, ...selectedKnowledge].slice(0, totalLimit);
 }
 
 Deno.serve(async (req: Request) => {
@@ -186,7 +231,7 @@ Deno.serve(async (req: Request) => {
       }),
       supabase.rpc("match_knowledge_documents", {
         query_embedding: Array.from(embedding),
-        match_threshold: 0.15,
+        match_threshold: 0.28,
         match_count: matchCount,
       }),
     ]);
@@ -194,20 +239,8 @@ Deno.serve(async (req: Request) => {
     if (listingsError) throw listingsError;
     if (knowledgeError) throw knowledgeError;
 
-    let finalKnowledgeData = (knowledge ?? []) as KnowledgeDocument[];
-
-    if (finalKnowledgeData.length === 0) {
-      const { data: fallbackKnowledge } = await supabase
-        .from("knowledge_documents")
-        .select("title, content, metadata")
-        .limit(2);
-      if (fallbackKnowledge) {
-        finalKnowledgeData = fallbackKnowledge.map((doc) => ({
-          ...doc,
-          similarity: 0.50, // Default baseline for fallback items
-        })) as KnowledgeDocument[];
-      }
-    }
+    const finalKnowledgeData = ((knowledge ?? []) as KnowledgeDocument[])
+      .filter((document) => document.metadata?.place === "Bataan, Philippines");
 
     const typedListings = (listings ?? []) as Listing[];
     const highestRank = Math.max(
@@ -215,36 +248,57 @@ Deno.serve(async (req: Request) => {
       0,
     );
 
-    const propertyDocuments: RetrievedDocument[] = typedListings.map((listing) => {
-      const rankVal = Number(listing.rank) || 0;
-      const normalizedScore = highestRank > 0 ? rankVal / highestRank : 0.8;
+    const propertyDocuments: RetrievedDocument[] = typedListings.map(
+      (listing) => {
+        const rankVal = Number(listing.rank) || 0;
+        const normalizedScore = highestRank > 0 ? rankVal / highestRank : 0.8;
 
-      return {
-        title: `${compact(listing.title, 90) || "Bataan property"}${
-          listing.price ? ` — ${compact(listing.price, 40)}` : ""
-        }`,
-        content: [
-          "Bataan listing record:",
-          listing.price ? `price ${compact(listing.price, 40)}` : null,
-          listing.bedrooms ? `${compact(listing.bedrooms, 20)} bedrooms` : null,
-          listing.bathrooms ? `${compact(listing.bathrooms, 20)} bathrooms` : null,
-          listing.floor_area ? `area ${compact(listing.floor_area, 30)}` : null,
-          `location/details ${compact(listing.location, 360)}`,
-          listing.source_url
-            ? `original source ${compact(listing.source_url, 180)}`
-            : null,
-          highestRank > 0
-            ? `relative lexical match ${formatPercentage(rankVal, highestRank)}`
-            : null,
-        ].filter(Boolean).join("; ").slice(0, maxDocumentCharacters),
-        similarity: normalizedScore, // Enables UI badge rendering
-      };
-    });
+        return {
+          id: listing.id,
+          title: `${compact(listing.title, 90) || "Bataan property"}${
+            listing.price ? ` — ${compact(listing.price, 40)}` : ""
+          }`,
+          content: [
+            "Bataan listing record:",
+            listing.price ? `price ${compact(listing.price, 40)}` : null,
+            listing.bedrooms
+              ? `${compact(listing.bedrooms, 20)} bedrooms`
+              : null,
+            listing.bathrooms
+              ? `${compact(listing.bathrooms, 20)} bathrooms`
+              : null,
+            listing.floor_area
+              ? `area ${compact(listing.floor_area, 30)}`
+              : null,
+            `location/details ${compact(listing.location, 360)}`,
+            listing.source_url
+              ? `original source ${compact(listing.source_url, 180)}`
+              : null,
+            highestRank > 0
+              ? `relative lexical match ${
+                formatPercentage(rankVal, highestRank)
+              }`
+              : null,
+          ].filter(Boolean).join("; ").slice(0, maxDocumentCharacters),
+          category: "listing",
+          metadata: { match_type: "relative lexical rank" },
+          similarity: normalizedScore,
+          source_url: safeSourceUrl(listing.source_url),
+        };
+      },
+    );
 
-    const knowledgeDocuments: RetrievedDocument[] = finalKnowledgeData.map((document) => ({
+    const knowledgeDocuments: RetrievedDocument[] = finalKnowledgeData.map((
+      document,
+    ) => ({
+      id: document.id,
       title: document.title,
       content: document.content?.slice(0, maxDocumentCharacters),
-      similarity: typeof document.similarity === "number" ? document.similarity : 0.5, // Enables UI badge rendering
+      category: document.category ?? "knowledge",
+      metadata: { ...document.metadata, match_type: "semantic similarity" },
+      similarity: typeof document.similarity === "number"
+        ? document.similarity
+        : 0,
     }));
 
     const documents = balanceRetrievedContext(
