@@ -1,6 +1,6 @@
 # Haven Estates
 
-A polished real-estate discovery landing page built with React and Vite. It includes a responsive property search interface, featured listings, and the Vanguard AI Advisor chat experience.
+A polished real-estate discovery landing page built with React and Vite. Listings are loaded from the Supabase `public.bataan_properties` table; the app does not use local property JSON, mock listings, or live scraping.
 
 ## Tech stack
 
@@ -16,6 +16,8 @@ npm run dev
 ```
 
 The AI advisor retrieves relevant sample knowledge from Supabase before sending a response. Copy `.env.example` to `.env.local` and provide the Supabase publishable connection values. Do not put OpenAI API keys in any `VITE_*` variable because those values are bundled into the browser.
+
+The listing UI fetches and normalizes `id`, `title`, `price`, `location`, `bedrooms`, `bathrooms`, `floor_area`, `source_url`, and `scraped_at` from `bataan_properties`. Search, price/type filtering, sorting, pagination, details, and original-listing links operate on that Supabase response. The legacy `Scraped data/` utility is not imported or run by the application.
 
 The hosted Supabase project uses the `knowledge_documents` table, pgvector similarity search, and the `rag-retrieve` and `vanguard-chat` Edge Functions. Sample Bay Area real-estate documents are included in the migration.
 
