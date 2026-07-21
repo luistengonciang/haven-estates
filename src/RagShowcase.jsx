@@ -3,9 +3,9 @@ import { ArrowUpRight, Database, LoaderCircle, Search, ShieldCheck, Sparkles } f
 import { supabase, supabaseConfigReady } from './lib/supabase';
 
 const sampleQueries = [
-  'What should I check before buying a waterfront home?',
+  'What should I check before buying a home in Bataan?',
   'How should I set a realistic home budget?',
-  'What makes a Bay Area investment resilient?',
+  'What makes it great to invest in Bataan?',
 ];
 
 export default function RagShowcase() {
