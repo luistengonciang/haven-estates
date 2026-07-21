@@ -22,6 +22,17 @@ function propertyTypeFrom(row) {
   return 'Property';
 }
 
+function listingImageFrom(row) {
+  const images = {
+    Condo: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1100&q=85',
+    House: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1100&q=85',
+    Land: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1100&q=85',
+    Commercial: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1100&q=85',
+    Property: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1100&q=85',
+  };
+  return images[propertyTypeFrom(row)];
+}
+
 export function mapBataanProperty(row) {
   return {
     id: row.id,
@@ -34,8 +45,10 @@ export function mapBataanProperty(row) {
     bathrooms: row.bathrooms || '—',
     floorArea: row.floor_area || '—',
     type: propertyTypeFrom(row),
+    image: listingImageFrom(row),
     sourceUrl: row.source_url,
     scrapedAt: row.scraped_at,
+    searchableText: `${row.title ?? ''} ${row.location ?? ''} ${row.source_url ?? ''}`.toLowerCase(),
   };
 }
 
@@ -56,7 +69,7 @@ export function filterAndSortProperties(properties, { query, priceBand, property
   const priceBands = { under1m: [0, 1_000_000], '1m-5m': [1_000_000, 5_000_000], '5m-10m': [5_000_000, 10_000_000], over10m: [10_000_000, Infinity] };
   const range = priceBands[priceBand];
   const filtered = properties.filter((property) => {
-    const matchesQuery = !normalizedQuery || `${property.title} ${property.location}`.toLowerCase().includes(normalizedQuery);
+    const matchesQuery = !normalizedQuery || property.searchableText.includes(normalizedQuery);
     const matchesType = !propertyType || property.type === propertyType;
     const matchesPrice = !range || (property.priceValue !== null && property.priceValue >= range[0] && property.priceValue < range[1]);
     return matchesQuery && matchesType && matchesPrice;

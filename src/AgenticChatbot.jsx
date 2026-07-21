@@ -22,8 +22,8 @@ const quickPrompts = [
 
 const statusSteps = [
   'Analyzing intent & criteria...',
-  'Scanning off-market MLS registry...',
-  'Running predictive ROI algorithms...',
+  'Searching Bataan property listings...',
+  'Preparing a concise, grounded answer...',
 ];
 
 const model = 'gpt-4o-mini';
@@ -32,7 +32,7 @@ async function retrieveKnowledge(query) {
   if (!supabase || !supabaseConfigReady) return [];
 
   const { data, error } = await supabase.functions.invoke('rag-retrieve', {
-    body: { query, matchCount: 5 },
+    body: { query, matchCount: 3 },
   });
 
   if (error) throw error;

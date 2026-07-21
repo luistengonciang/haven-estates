@@ -8,7 +8,7 @@ import { filterAndSortProperties, getBataanProperties } from './lib/properties';
 const PAGE_SIZE = 9;
 
 function PropertyCard({ property, onSelect }) {
-  return <article className="property-card"><div className="property-image listing-visual"><Building2 size={43} strokeWidth={1.25} /><span>{property.type}</span><button aria-label={`Save ${property.title}`}><Heart size={18} /></button></div><div className="property-info"><p className="property-price">{property.price}</p><h3>{property.title}</h3><p className="property-place"><MapPin size={14} /> {property.location}</p><div className="property-specs"><span><BedDouble size={16} /> {property.bedrooms} beds</span><span><Bath size={16} /> {property.bathrooms} baths</span><span><Square size={15} /> {property.floorArea}</span></div><button className="detail-button" onClick={() => onSelect(property)}>View details <MoveRight size={17} /></button></div></article>;
+  return <article className="property-card"><div className="property-image"><img src={property.image} alt="" /><span>{property.type}</span><button aria-label={`Save ${property.title}`}><Heart size={18} /></button></div><div className="property-info"><p className="property-price">{property.price}</p><h3>{property.title}</h3><p className="property-place"><MapPin size={14} /> {property.location}</p><div className="property-specs"><span><BedDouble size={16} /> {property.bedrooms} beds</span><span><Bath size={16} /> {property.bathrooms} baths</span><span><Square size={15} /> {property.floorArea}</span></div><button className="detail-button" onClick={() => onSelect(property)}>View details <MoveRight size={17} /></button></div></article>;
 }
 
 export default function App() {
