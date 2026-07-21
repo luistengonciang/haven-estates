@@ -46,7 +46,7 @@ function listingSearchText(query: string) {
   const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter(
     (term) => !ignored.has(term),
   ).slice(0, 4);
-  
+
   // Uses uppercase "OR" for websearch_to_tsquery compatibility
   return terms.length ? terms.join(" OR ") : query;
 }
@@ -73,12 +73,55 @@ function extractPropertyType(query: string) {
 }
 
 function extractLocation(query: string) {
-  // All 12 LGUs in Bataan
+  // All 12 Municipalities/Cities in Bataan
   const locations = [
     "abucay", "bagac", "balanga", "dinalupihan", "hermosa", "limay",
     "mariveles", "morong", "orani", "orion", "pilar", "samal",
   ];
   return locations.find((location) => query.toLowerCase().includes(location)) ?? null;
+}
+
+/**
+ * Prevents context starvation by ensuring high-volume retrieval sources (e.g. listings)
+ * cannot completely push out domain knowledge context.
+ */
+function balanceRetrievedContext(
+  listings: RetrievedDocument[],
+  knowledge: RetrievedDocument[],
+  totalLimit: number = 5,
+  reservedKnowledgeSlots: number = 2,
+): RetrievedDocument[] {
+  // 1. Enforce reserved slots floor for knowledge base
+  const maxListingSlots = Math.max(0, totalLimit - reservedKnowledgeSlots);
+
+  // 2. Initial allocation
+  let selectedListings = listings.slice(0, maxListingSlots);
+  let selectedKnowledge = knowledge.slice(0, reservedKnowledgeSlots);
+
+  // 3. Dynamic Backfill: Overflow unused capacity to whichever source has remaining data
+  let remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
+
+  if (remainingBudget > 0) {
+    // Backfill with extra knowledge docs first
+    const extraKnowledge = knowledge.slice(
+      selectedKnowledge.length,
+      selectedKnowledge.length + remainingBudget,
+    );
+    selectedKnowledge = [...selectedKnowledge, ...extraKnowledge];
+
+    // If still under capacity, backfill with extra listings
+    remainingBudget = totalLimit - (selectedListings.length + selectedKnowledge.length);
+    if (remainingBudget > 0) {
+      const extraListings = listings.slice(
+        selectedListings.length,
+        selectedListings.length + remainingBudget,
+      );
+      selectedListings = [...selectedListings, ...extraListings];
+    }
+  }
+
+  // Listing docs placed first for consistent citation order in LLM responses
+  return [...selectedListings, ...selectedKnowledge];
 }
 
 Deno.serve(async (req: Request) => {
@@ -138,8 +181,7 @@ Deno.serve(async (req: Request) => {
       supabase.rpc("match_knowledge_documents", {
         query_embedding: Array.from(embedding),
         match_threshold: 0.35,
-        match_count: matchCount, // Dynamic match count
-        // Filter inside RPC via metadata filter if your SQL function supports it
+        match_count: matchCount,
       }),
     ]);
 
@@ -178,14 +220,13 @@ Deno.serve(async (req: Request) => {
         content: document.content?.slice(0, maxDocumentCharacters),
       }));
 
-    const maxPropertySlots = Math.max(1, matchCount - 2);
-    const selectedListings = propertyDocuments.slice(0, maxPropertySlots);
-    const selectedKnowledge = knowledgeDocuments.slice(
-      0,
-      matchCount - selectedListings.length,
+    // Dynamic slot allocation (e.g. 3 listings + 2 knowledge base docs for a 5-doc limit)
+    const documents = balanceRetrievedContext(
+      propertyDocuments,
+      knowledgeDocuments,
+      matchCount,
+      2, // Floor reserved for knowledge base context
     );
-
-    const documents = [...selectedListings, ...selectedKnowledge];
 
     return Response.json({ documents }, { headers: corsHeaders });
   } catch (error) {
