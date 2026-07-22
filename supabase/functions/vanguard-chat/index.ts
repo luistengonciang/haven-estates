@@ -116,6 +116,10 @@ function normalizeListingText(value: unknown) {
 
 function listingCriteriaText(criteria: ListingCriteria | null) {
   if (!criteria) return "";
+  // price and area_sqm are intentionally excluded: they are never part of the
+  // indexed title/location/source_url document, and price already has a
+  // dedicated numeric hard filter (max_price) on the search RPC. Including
+  // them as required text terms only ever produces zero matches.
   return [
     criteria.property_name,
     ...(criteria.location_terms ?? []),
@@ -123,8 +127,6 @@ function listingCriteriaText(criteria: ListingCriteria | null) {
     criteria.status,
     criteria.lot_number ? `lot ${criteria.lot_number}` : null,
     criteria.block_number ? `block ${criteria.block_number}` : null,
-    criteria.area_sqm ? `${criteria.area_sqm} sqm` : null,
-    criteria.price ? String(criteria.price) : null,
     ...(criteria.search_terms ?? []),
   ].filter(Boolean).join(" ");
 }
@@ -430,7 +432,10 @@ async function retrieveContext(
     { data: hintedListings, error: hintedListingsError },
   ] = await Promise.all([
     supabase.rpc("search_bataan_properties", {
-      search_text: listingCriteriaText(criteria) || listingSearchText(query),
+      // websearch_to_tsquery AND-combines bare words, so criteria text must
+      // be OR-tokenized here or a single non-matching term (e.g. a generic
+      // search_terms word) zeroes out every other, more relevant term.
+      search_text: listingSearchText(listingCriteriaText(criteria) || query),
       match_count: 10,
       max_price: criteria?.price ?? null,
       property_type: criteria?.property_type || null,
