@@ -105,8 +105,6 @@ function listingSearchText(query: string) {
 function normalizeListingText(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
-    .replace(/\bbrgy\b/g, "barangay")
-    .replace(/\bbrngy\b/g, "barangay")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -202,7 +200,7 @@ async function extractListingCriteria(
       messages: [{
         role: "system",
         content:
-          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful normalized equivalents and distinctive names in search_terms.",
+          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules.",
       }, { role: "user", content: query.slice(-maxConversationCharacters) }],
     }),
   });
