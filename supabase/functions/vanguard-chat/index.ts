@@ -441,24 +441,25 @@ Deno.serve(async (req: Request) => {
             : "The tool could not complete the request",
         };
       }
-      openAiMessages.push({
-        role: "assistant",
-        content: null,
-        tool_calls: [{
-          id: approvedAction.call_id,
-          type: "function",
-          function: {
-            name: approvedAction.name,
-            arguments: JSON.stringify(approvedArguments),
-          },
-        }],
-      });
-      openAiMessages.push({
-        role: "tool",
-        tool_call_id: approvedAction.call_id,
-        content: JSON.stringify(result),
-      });
-      payload = await runOpenAIRequest(openaiApiKey, openAiMessages, false);
+      const toolResult = result as Record<string, unknown>;
+      if (toolResult.success !== true) {
+        return Response.json({ error: "VIEWING_REQUEST_FAILED" }, {
+          status: 422,
+          headers: corsHeaders,
+        });
+      }
+      const preferredDate = compact(toolResult.preferred_date, 20);
+      const preferredTime = compact(toolResult.preferred_time, 80);
+      const propertyTitle = compact(toolResult.property_title, 120) ||
+        "the selected property";
+      return Response.json({
+        content:
+          `Your viewing request for ${propertyTitle} has been submitted for ${preferredDate}${
+            preferredTime ? ` at ${preferredTime}` : ""
+          }. It is pending confirmation from the property team.`,
+        model,
+        sources: publicSources(retrievedDocuments),
+      }, { headers: corsHeaders });
     } else {
       payload = await runOpenAIRequest(openaiApiKey, openAiMessages);
       const assistantMessage = payload.choices?.[0]?.message;
