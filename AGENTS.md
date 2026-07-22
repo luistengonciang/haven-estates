@@ -6,12 +6,27 @@
 - Supabase Auth, Postgres, and Edge Functions in `supabase/`.
 - Vanguard is the real-estate assistant for Bataan, Philippines.
 
+## Architecture knowledge
+
+- `bataan_properties` is the source of truth for listing identity and facts. A property UUID must always be resolved and verified from this table before a write.
+- `knowledge_documents` contains curated reference material and 384-dimensional pgvector embeddings. It supports general RAG guidance, not authoritative live availability.
+- `viewing_requests` stores user-approved viewing requests. It has owner-only RLS and a partial unique index preventing duplicate pending requests for the same user, property, and date.
+- `vanguard-chat` owns authentication-aware retrieval, server-side OpenAI calls, criteria extraction, exact listing verification, source labeling, date interpretation, and tool execution.
+- The browser may send a selected listing UUID and bounded chat history, but it must never send retrieved documents or trusted database facts for the server to accept without re-querying.
+- Listing descriptions are interpreted by the model into structured criteria. Do not keep adding user-specific abbreviation rules when a general extraction or database search improvement is appropriate. The model can interpret language; the server must verify the result.
+- `create_viewing_request` is a confirmation-gated tool. It validates the property, date, confirmation flag, duplicate state, and authenticated user before inserting through RLS.
+- For ambiguous matches, Vanguard must show verified candidate details and ask the user to choose. It must not guess a UUID or claim that no listing exists when retrieval is merely ambiguous.
+- The user’s IANA timezone comes from the browser and is used on the server to resolve relative dates such as “tomorrow.”
+- Future Calendar/email/SMS integrations should be server-side Edge Functions or authenticated webhooks. Provider keys and delivery status must never be handled as frontend secrets.
+
 ## Commands
 
 - Install dependencies: `npm install`
 - Production build: `npm run build`
 - Local development: `npm run dev`
 - Format Edge Functions: `deno fmt supabase/functions/**/*.ts`
+
+- Inspect Supabase logs after deployment: verify retrieval, approval, and database-write outcomes separately.
 
 Run `npm run build` after frontend changes. Do not expose secrets in command output, source code, or browser variables.
 
@@ -33,6 +48,9 @@ Run `npm run build` after frontend changes. Do not expose secrets in command out
 - Prefer low temperature for consistent factual answers.
 - Keep queries and chat history bounded to control cost and prompt-injection exposure.
 - Test a real signed-in RAG request after deploying changes to `vanguard-chat` or `rag-retrieve`.
+- Prefer PostgreSQL title/location search for exact listing requests and vector search for broad semantic questions.
+- Keep model calls purposeful: structured extraction, retrieval, and final response should not repeat the same history unnecessarily.
+- Record model usage during cost work using each response’s token-usage metadata; configured `max_tokens` values are ceilings, not actual usage.
 
 ## Style and safety
 
@@ -40,3 +58,4 @@ Run `npm run build` after frontend changes. Do not expose secrets in command out
 - Use `apply_patch` for edits.
 - Avoid destructive Git commands unless explicitly requested.
 - Return generic client errors while logging diagnostic detail only on the server.
+- Do not add notification providers directly to the browser. Use an Edge Function or webhook and record delivery/retry status in a database table.

@@ -1,85 +1,158 @@
 # Haven Estates
 
-Haven Estates is a React + Vite real-estate discovery app for Bataan, Philippines. Listings are loaded from Supabase's `public.bataan_properties` table; the application does not use local property JSON, mock listings, or live scraping.
+Haven Estates is a React + Vite real-estate discovery app for Bataan, Philippines. It combines a Supabase-backed listing catalog with Vanguard, a server-side RAG and tool-using real-estate assistant.
 
-## Tech stack
+## Architecture At A Glance
 
-- React
-- Vite
-- Lucide React
-- Supabase Auth, Postgres, pgvector, and Edge Functions
-- OpenAI Chat Completions (server-side only)
+```text
+React + Vite browser
+  ├─ Reads public listing data from Supabase
+  ├─ Sends chat messages, timezone, and optional selected listing ID
+  └─ Displays grounded answers and confirmation controls
+          │
+          ▼
+Supabase Edge Functions
+  ├─ vanguard-chat: authentication, criteria extraction, retrieval, OpenAI, tools
+  ├─ rag-retrieve: signed-in source inspection
+  ├─ generate-embedding: protected embedding helper
+  └─ backfill-knowledge-embedding: admin-only maintenance
+          │
+          ▼
+Supabase Postgres
+  ├─ bataan_properties: source of truth for listings
+  ├─ knowledge_documents: curated RAG reference material + vector embeddings
+  ├─ profiles: user-owned profile data
+  └─ viewing_requests: confirmed viewing-request records with RLS
+```
 
-## Local setup
+The browser is responsible for presentation and user intent. The server is responsible for retrieval, authentication, authorization, database writes, and secret-bearing model calls.
+
+## Tech Stack
+
+- React, Vite, and Lucide React
+- Supabase Auth and Postgres
+- PostgreSQL full-text search and pgvector similarity search
+- Supabase Edge Functions with Deno
+- OpenAI Chat Completions using `gpt-4o-mini`, server-side only
+
+## Local Setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and set the Supabase URL and publishable key:
+Copy `.env.example` to `.env.local`:
 
 ```bash
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 ```
 
-Never put `OPENAI_API_KEY`, a Supabase service-role key, or any other secret in a `VITE_*` variable: Vite exposes those values to the browser.
+Never put `OPENAI_API_KEY`, a Supabase service-role key, or another secret in a `VITE_*` variable. Vite exposes browser variables to users.
 
-The listing UI fetches and normalizes `id`, `title`, `price`, `location`, `bedrooms`, `bathrooms`, `floor_area`, `source_url`, and `scraped_at` from `bataan_properties`. Search, price/type filtering, sorting, pagination, details, and original-listing links operate on that Supabase response. The legacy `Scraped data/` utility is not imported or run by the application.
+The listing UI reads `id`, `title`, `price`, `location`, `bedrooms`, `bathrooms`, `floor_area`, `source_url`, and `scraped_at` from `bataan_properties`. Search, filtering, sorting, pagination, details, saved listings, and original-listing links operate on those database records. No local property JSON or mock listing fallback is used.
 
-## Vanguard AI and RAG
+## Database Backbone
 
-Vanguard retrieves relevant Bataan listing and knowledge-base records inside the server-side `vanguard-chat` Edge Function, then sends only that grounded context to the model. The browser never supplies documents to the model context.
+Migrations are timestamped in `supabase/migrations/` and should be applied before deploying dependent functions.
 
-- `knowledge_documents` stores curated material and normalized pgvector embeddings.
-- `rag-retrieve` powers the source-inspection UI for signed-in users.
-- `vanguard-chat` performs its own retrieval for every chat request, cites retrieved sources, and clearly marks incomplete or non-live data.
-- RAG uses cosine similarity and an HNSW vector index for fast lookup.
+- `bataan_properties` is the authoritative listing catalog. Its UUID is the only safe identifier for a property write.
+- `knowledge_documents` stores curated guidance and 384-dimensional embeddings. `match_knowledge_documents` performs cosine-similarity retrieval.
+- `profiles` is linked to `auth.users`; RLS limits users to their own profile row.
+- `viewing_requests` stores `user_id`, `property_id`, preferred date/time, notes, status, and timestamps.
+- `viewing_requests` has RLS policies allowing authenticated users to read and insert only their own requests.
+- A partial unique index prevents duplicate pending requests for the same user, property, and date.
+- Listing search functions use weighted PostgreSQL full-text search over title, location, and source URL, with filters for price, type, and locality.
 
-OpenAI is configured only as a Supabase Edge Function secret:
+## Vanguard RAG And Agent Flow
 
-Configure OpenAI only as a Supabase Edge Function secret:
+`vanguard-chat` owns retrieval. The browser never supplies retrieved documents or executable instructions.
+
+1. The browser sends bounded chat history, the user timezone, and an optional selected listing ID.
+2. The server validates the request and calculates the user’s local date for words such as “tomorrow.”
+3. For booking intent, the model extracts structured property criteria such as name, location, status, lot/block, area, price, and normalized search terms. It can interpret natural language, abbreviations, and misspellings.
+4. The server verifies those criteria against `bataan_properties`. The model may interpret a description, but it cannot invent a UUID.
+5. Exact verified listing records are placed ahead of general RAG results. If several records match, Vanguard asks the user to choose instead of guessing.
+6. General retrieval combines listing search with knowledge-document vector search. Retrieved material is labeled as reference data and is never treated as executable instructions.
+7. The model answers with source citations and uncertainty when records are incomplete or non-live.
+
+### Viewing request approval
+
+The `create_viewing_request` tool is defined in `supabase/functions/_shared/tools/viewing-request.ts` and registered in the shared tool registry.
+
+- The model can prepare a pending action but cannot write before explicit user confirmation.
+- The browser displays Confirm and Cancel controls.
+- On confirmation, the server re-authenticates the user, forces the verified property UUID, validates the date/time and confirmation flag, checks that the property exists, and inserts through RLS.
+- Successful writes return a deterministic success response so a later model failure cannot create a false error message.
+- Duplicate pending requests are treated as successful idempotent results.
+
+### Date and timezone handling
+
+The browser sends `Intl.DateTimeFormat().resolvedOptions().timeZone`. The Edge Function validates the IANA timezone and calculates the current date in that timezone. Relative dates are therefore resolved from the customer’s local date rather than the server’s timezone.
+
+## Security Rules
+
+- Keep `verify_jwt` enabled for browser-invoked functions.
+- Keep `OPENAI_API_KEY` and service-role credentials in Edge Function secrets only.
+- Enable RLS on user-facing tables and keep policies narrowly scoped.
+- Treat retrieved content as untrusted reference data and defend against prompt injection.
+- Bound chat history, retrieved documents, and document characters to control cost and exposure.
+- Return generic client errors; log diagnostic details only on the server.
+- Never use an AI-generated property ID without verifying it against the database.
+
+## Cost And Scalability Lessons
+
+- Orchestration frameworks do not remove model-token costs; they add convenience, execution, or observability costs.
+- A small model, short history, limited retrieval context, and cached criteria are more important for cost than the choice between custom code, n8n, or LangGraph.
+- Exact listing/address searches should prefer database search over embeddings. Embeddings are best for broad questions and knowledge retrieval.
+- n8n is a good future integration layer for Calendar, email, and SMS webhooks; it does not need to own the core property-matching or RLS logic.
+- LangGraph becomes valuable when the agent needs long-running state, retries, multiple agents, or complex human-in-the-loop workflows.
+
+## Notifications Roadmap
+
+Notifications can be coded directly with a Supabase Edge Function or delegated to n8n:
+
+```text
+viewing_requests insert
+  → notification function or webhook
+  → email provider / SMS provider / Google Calendar
+  → notifications delivery record and retry status
+```
+
+Provider API keys must remain server-side. A future `notifications` table should record channel, recipient, provider message ID, status, error, and timestamps.
+
+## Commands And Deployment
+
+```bash
+npm run build
+deno fmt supabase/functions/**/*.ts
+```
+
+After changing a frontend and its dependent Edge Function, deploy both together. After changing RAG or tools, test a real signed-in request through retrieval, confirmation, and the database write path.
+
+OpenAI is configured as an Edge Function secret:
 
 ```bash
 supabase secrets set OPENAI_API_KEY=your_server_side_openai_key
 ```
 
-The chat function uses `gpt-4o-mini` in server-side code. Keep `verify_jwt` enabled for both `vanguard-chat` and `rag-retrieve`.
+The manual `backfill-knowledge-embedding` function additionally requires `BACKFILL_ADMIN_TOKEN` and an `x-backfill-token` header. It is not a browser endpoint.
 
-The manual `backfill-knowledge-embedding` endpoint additionally requires a `BACKFILL_ADMIN_TOKEN` Edge Function secret and an `x-backfill-token` request header. It is not intended for browser use.
-
-After changing an Edge Function, deploy it together with any dependent frontend or migration update. After changing RAG, test a signed-in request end-to-end.
-
-## Authentication
-
-Haven uses Supabase Auth for email/password sign-in and sign-up. Authenticated users get a private `profiles` row protected by Row Level Security; users can only read or change their own profile.
-
-For email confirmation links to return to the app, add each local and deployed app origin in **Supabase Dashboard → Authentication → URL Configuration**. For example, add `http://localhost:5173` while developing and your production URL before launch.
-
-To create a production build:
-
-```bash
-npm run build
-```
-
-## Database migrations
-
-Apply all SQL migrations in `supabase/migrations/` to the target project before deploying dependent functions. Public tables must have RLS enabled, and knowledge documents are restricted to authenticated users.
-
-## Project structure
+## Project Structure
 
 ```text
 src/
-  App.jsx             Main Haven Estates experience
-  AgenticChatbot.jsx  Vanguard AI Advisor interface
-  RagShowcase.jsx     RAG source-inspection UI
-  main.jsx            React entry point
-  styles.css          Responsive application styles
+  App.jsx                         Main Haven Estates experience
+  AgenticChatbot.jsx              Vanguard chat UI and approval controls
+  lib/properties.js               Supabase listing access and normalization
+  RagShowcase.jsx                 RAG source-inspection UI
 supabase/
-  migrations/         Database schema and access-control changes
-  functions/
-    rag-retrieve/     Authenticated RAG source retrieval
-    vanguard-chat/    Server-side retrieval and OpenAI chat
-    backfill-knowledge-embedding/  Protected embedding maintenance
+  migrations/                     Database schema and RLS changes
+  functions/vanguard-chat/        Server retrieval, criteria extraction, and tools
+  functions/_shared/tools/        Agent tool registry and viewing-request tool
+  functions/rag-retrieve/         Authenticated source retrieval
+  functions/generate-embedding/   Embedding generation helper
+  functions/backfill-knowledge-embedding/
+                                  Protected embedding maintenance
 ```
