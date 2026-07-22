@@ -386,8 +386,9 @@ async function runOpenAIRequest(
       model,
       temperature: 0.2,
       max_tokens: 700,
-      ...(allowTools ? { tools: agentTools, tool_choice: "auto" } : {}),
-      parallel_tool_calls: false,
+      ...(allowTools
+        ? { tools: agentTools, tool_choice: "auto", parallel_tool_calls: false }
+        : {}),
       messages,
     }),
   });
