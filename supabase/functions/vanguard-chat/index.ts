@@ -99,115 +99,8 @@ function getUserDate(timeZone: string) {
 }
 
 function listingSearchText(query: string) {
-  const ignored = new Set([
-    "about",
-    "before",
-    "buying",
-    "check",
-    "find",
-    "from",
-    "have",
-    "home",
-    "listing",
-    "listings",
-    "property",
-    "properties",
-    "should",
-    "that",
-    "the",
-    "what",
-    "with",
-  ]);
-  const terms = (query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((
-    term,
-  ) => !ignored.has(term)).slice(0, 4);
-  return terms.length ? terms.join(" or ") : query;
+  return query.trim().slice(0, maxConversationCharacters);
 }
-
-function extractMaxPrice(query: string) {
-  const match = query.toLowerCase().match(
-    /(?:under|below|less than|up to|max(?:imum)?(?: budget)?)\s*(?:₱|php|p)?\s*([\d,.]+)\s*(million|m|k)?/i,
-  );
-  if (!match) return null;
-  const amount = Number(match[1].replace(/,/g, ""));
-  if (!Number.isFinite(amount)) return null;
-  const unit = match[2]?.toLowerCase();
-  return amount *
-    (unit === "million" || unit === "m" ? 1_000_000 : unit === "k" ? 1_000 : 1);
-}
-
-function extractPropertyType(query: string) {
-  return /\b(home|house|houses|villa|townhouse)\b/i.test(query)
-    ? "house"
-    : null;
-}
-
-function extractLocation(query: string) {
-  const locations = [
-    "abucay",
-    "balanga",
-    "dinalupihan",
-    "hermosa",
-    "limay",
-    "mariveles",
-    "morong",
-    "orani",
-    "pilar",
-    "samal",
-  ];
-  return locations.find((location) => query.toLowerCase().includes(location)) ??
-    null;
-}
-
-function extractDistinctiveListingPhrases(query: string) {
-  const normalized = query.toLowerCase().replace(/\s+/g, " ").trim();
-  const phrases = new Set<string>();
-  const ridge = normalized.match(/\b[a-z0-9]+\s+ridge\b/);
-  if (ridge) phrases.add(ridge[0]);
-  const lot = normalized.match(/\blot\s+[a-z0-9-]+\b/);
-  if (lot) phrases.add(lot[0]);
-  const block = normalized.match(/\bblock\s+[a-z0-9-]+\b/);
-  if (block) phrases.add(block[0]);
-  return [...phrases].filter((phrase) => phrase.length >= 5).slice(0, 3);
-}
-
-const listingMatchStopWords = new Set([
-  "about",
-  "appointment",
-  "area",
-  "book",
-  "confirm",
-  "confirmed",
-  "could",
-  "first",
-  "for",
-  "from",
-  "have",
-  "house",
-  "i",
-  "in",
-  "interested",
-  "like",
-  "lot",
-  "me",
-  "my",
-  "one",
-  "please",
-  "property",
-  "request",
-  "schedule",
-  "sqm",
-  "the",
-  "this",
-  "to",
-  "tomorrow",
-  "view",
-  "viewing",
-  "want",
-  "with",
-  "would",
-  "yes",
-]);
 
 function normalizeListingText(value: unknown) {
   return String(value ?? "")
@@ -217,12 +110,6 @@ function normalizeListingText(value: unknown) {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function listingMatchTerms(query: string) {
-  return normalizeListingText(query).split(" ").filter((term) =>
-    term.length >= 2 && !listingMatchStopWords.has(term)
-  );
 }
 
 function listingCriteriaText(criteria: ListingCriteria | null) {
@@ -238,6 +125,25 @@ function listingCriteriaText(criteria: ListingCriteria | null) {
     criteria.price ? String(criteria.price) : null,
     ...(criteria.search_terms ?? []),
   ].filter(Boolean).join(" ");
+}
+
+function listingCriteriaTerms(criteria: ListingCriteria | null) {
+  return normalizeListingText(listingCriteriaText(criteria)).split(" ").filter(
+    (term) => term.length >= 2,
+  );
+}
+
+function listingCriteriaPhrases(criteria: ListingCriteria | null) {
+  if (!criteria) return [];
+  return [
+    criteria.property_name,
+    ...(criteria.location_terms ?? []),
+    criteria.property_type,
+    criteria.status,
+    criteria.lot_number,
+    criteria.block_number,
+  ].filter((value): value is string => Boolean(value && value.length >= 4))
+    .map(normalizeListingText);
 }
 
 async function extractListingCriteria(
@@ -316,12 +222,9 @@ async function extractListingCriteria(
 
 async function resolveExactListingId(
   supabase: ReturnType<typeof createClient>,
-  query: string,
   criteria: ListingCriteria | null = null,
 ) {
-  const queryTerms = listingMatchTerms(
-    `${query} ${listingCriteriaText(criteria)}`,
-  );
+  const queryTerms = listingCriteriaTerms(criteria);
   if (queryTerms.length < 2) return { id: null, candidateIds: [] as string[] };
 
   const { data, error } = await supabase.from("bataan_properties").select(
@@ -329,7 +232,7 @@ async function resolveExactListingId(
   ).limit(1000);
   if (error) throw error;
 
-  const queryText = normalizeListingText(query);
+  const criteriaPhrases = listingCriteriaPhrases(criteria);
   const candidates = (data ?? []).map((row) => {
     const title = normalizeListingText(row.title);
     const location = normalizeListingText(row.location);
@@ -343,11 +246,8 @@ async function resolveExactListingId(
     const locationMatches = queryTerms.filter((term) =>
       location.split(" ").includes(term)
     );
-    const phraseMatches = extractDistinctiveListingPhrases(queryText).filter((
-      phrase,
-    ) =>
-      location.includes(normalizeListingText(phrase)) ||
-      title.includes(normalizeListingText(phrase))
+    const phraseMatches = criteriaPhrases.filter((phrase) =>
+      location.includes(phrase) || title.includes(phrase)
     );
     return {
       id: row.id as string,
@@ -493,6 +393,7 @@ async function retrieveContext(
   query: string,
   authorization: string | null,
   listingIds: string[] = [],
+  criteria: ListingCriteria | null = null,
 ): Promise<RetrievedDocument[]> {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
@@ -506,19 +407,17 @@ async function retrieveContext(
     mean_pool: true,
     normalize: true,
   }) as number[];
-  const distinctivePhrases = extractDistinctiveListingPhrases(query);
   const [
     { data: listings, error: listingsError },
     { data: knowledge, error: knowledgeError },
     { data: hintedListings, error: hintedListingsError },
-    directMatches,
   ] = await Promise.all([
     supabase.rpc("search_bataan_properties", {
-      search_text: listingSearchText(query),
+      search_text: listingCriteriaText(criteria) || listingSearchText(query),
       match_count: 10,
-      max_price: extractMaxPrice(query),
-      property_type: extractPropertyType(query),
-      location_filter: extractLocation(query),
+      max_price: null,
+      property_type: criteria?.property_type || null,
+      location_filter: null,
     }),
     supabase.rpc("match_knowledge_documents", {
       query_embedding: Array.from(embedding),
@@ -530,23 +429,11 @@ async function retrieveContext(
         "id, title, price, location, bedrooms, bathrooms, floor_area, source_url, scraped_at",
       ).in("id", listingIds.slice(0, 10))
       : Promise.resolve({ data: [], error: null }),
-    Promise.all(
-      distinctivePhrases.map((phrase) =>
-        supabase.from("bataan_properties").select(
-          "id, title, price, location, bedrooms, bathrooms, floor_area, source_url, scraped_at",
-        ).ilike("location", `%${phrase}%`).limit(10)
-      ),
-    ),
   ]);
   if (listingsError) throw listingsError;
   if (knowledgeError) throw knowledgeError;
   if (hintedListingsError) throw hintedListingsError;
-  const directListings = directMatches.flatMap((result) => {
-    if (result.error) throw result.error;
-    return result.data ?? [];
-  });
   const typedListings = [
-    ...directListings,
     ...(hintedListings ?? []),
     ...(listings ?? []),
   ]
@@ -675,7 +562,6 @@ Deno.serve(async (req: Request) => {
         }
         const listingMatch = await resolveExactListingId(
           supabase,
-          retrievalQuery || latestQuestion,
           listingCriteria,
         );
         preferredListingId = listingMatch.id;
@@ -694,6 +580,7 @@ Deno.serve(async (req: Request) => {
         retrievalQuery || latestQuestion,
         req.headers.get("authorization"),
         listingIds,
+        listingCriteria,
       );
       if (matchedListingIds.length > 0) {
         const { data: verifiedListings, error: verifiedListingsError } =
