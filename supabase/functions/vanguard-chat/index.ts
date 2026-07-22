@@ -132,9 +132,14 @@ function listingCriteriaText(criteria: ListingCriteria | null) {
 }
 
 function listingCriteriaTerms(criteria: ListingCriteria | null) {
-  return normalizeListingText(listingCriteriaText(criteria)).split(" ").filter(
-    (term) => term.length >= 2,
-  );
+  // Deduplicated: property_name, location_terms, and search_terms routinely
+  // repeat the same word (the extraction schema asks for original and
+  // normalized equivalents), which otherwise inflates the term count and
+  // silently fails the match-confidence ratio below for genuinely strong,
+  // unique matches.
+  const terms = normalizeListingText(listingCriteriaText(criteria)).split(" ")
+    .filter((term) => term.length >= 2);
+  return [...new Set(terms)];
 }
 
 function listingCriteriaPhrases(criteria: ListingCriteria | null) {
