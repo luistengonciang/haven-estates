@@ -17,6 +17,11 @@ const maxDocuments = 5;
 const maxDocumentCharacters = 1_200;
 const maxExtractionCharacters = 1_200;
 const maxExtractionUserMessages = 3;
+// search_bataan_properties itself caps match_count at 10, so requesting more
+// listings than that can never be fulfilled from a single retrieval call.
+const maxRequestedListings = 10;
+const knowledgeDocumentSlots = 2;
+const maxDocumentBudget = maxRequestedListings + knowledgeDocumentSlots;
 
 const systemPrompt =
   `You are Vanguard, Haven Estates' reliable real-estate advisor for Bataan, Philippines. {CURRENT_DATE_IN_USER_TIMEZONE}
@@ -79,6 +84,7 @@ type ListingCriteria = {
   area_sqm?: number | null;
   price?: number | null;
   search_terms?: string[];
+  requested_count?: number | null;
 };
 
 const compact = (value: unknown, limit: number) =>
@@ -192,6 +198,7 @@ async function extractListingCriteria(
                 type: "array",
                 items: { type: "string" },
               },
+              requested_count: { type: ["number", "null"] },
             },
             required: [
               "property_name",
@@ -203,6 +210,7 @@ async function extractListingCriteria(
               "area_sqm",
               "price",
               "search_terms",
+              "requested_count",
             ],
             additionalProperties: false,
           },
@@ -211,7 +219,7 @@ async function extractListingCriteria(
       messages: [{
         role: "system",
         content:
-          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules.",
+          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules. If the customer explicitly asks for a specific number of properties, listings, or options (such as '10 properties' or 'top 5'), set requested_count to that integer; otherwise set it to null. Never invent a count that was not stated.",
       }, { role: "user", content: query.slice(-maxExtractionCharacters) }],
     }),
   });
@@ -325,8 +333,11 @@ function getActiveListingId(value: unknown) {
   return isUuid(id) ? id : null;
 }
 
-function buildRetrievedContext(documents: RetrievedDocument[]) {
-  const sources = documents.slice(0, maxDocuments).map((document, index) => {
+function buildRetrievedContext(
+  documents: RetrievedDocument[],
+  documentBudget: number = maxDocuments,
+) {
+  const sources = documents.slice(0, documentBudget).map((document, index) => {
     const title = document.title?.trim() || `Source ${index + 1}`;
     const content = document.content?.trim().slice(0, maxDocumentCharacters) ||
       "";
@@ -356,8 +367,11 @@ function buildVerifiedListingContext(
   return `\n\n<verified_listing_matches>\n${records}\n</verified_listing_matches>`;
 }
 
-function publicSources(documents: RetrievedDocument[]) {
-  return documents.slice(0, maxDocuments).map((document, index) => ({
+function publicSources(
+  documents: RetrievedDocument[],
+  documentBudget: number = maxDocuments,
+) {
+  return documents.slice(0, documentBudget).map((document, index) => ({
     id: document.id ?? `${index + 1}`,
     title: document.title?.trim() || `Source ${index + 1}`,
     category: document.category ?? "reference",
@@ -418,6 +432,7 @@ async function retrieveContext(
   authorization: string | null,
   listingIds: string[] = [],
   criteria: ListingCriteria | null = null,
+  documentBudget: number = maxDocuments,
 ): Promise<RetrievedDocument[]> {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
@@ -502,10 +517,13 @@ async function retrieveContext(
     }));
   // Keep room for general Bataan guidance when it is relevant, without
   // suppressing additional listings when semantic retrieval finds none.
-  const selectedKnowledge = knowledgeDocuments.slice(0, 2);
+  const selectedKnowledge = knowledgeDocuments.slice(
+    0,
+    Math.min(knowledgeDocumentSlots, documentBudget),
+  );
   const selectedListings = propertyDocuments.slice(
     0,
-    maxDocuments - selectedKnowledge.length,
+    documentBudget - selectedKnowledge.length,
   );
   return [...selectedListings, ...selectedKnowledge];
 }
@@ -592,6 +610,7 @@ Deno.serve(async (req: Request) => {
     let retrievedDocuments: RetrievedDocument[] = [];
     let verifiedListingContext = "";
     let listingCriteria: ListingCriteria | null = null;
+    let documentBudget = maxDocuments;
     try {
       if (!preferredListingId) {
         if (isPropertySearchQuery(userIntentText || latestQuestion)) {
@@ -616,11 +635,26 @@ Deno.serve(async (req: Request) => {
             .map((source) => source.id as string)
         ),
       ].filter((id): id is string => Boolean(id)).slice(0, 10);
+      const rawRequestedCount = listingCriteria?.requested_count;
+      const requestedListingCount = typeof rawRequestedCount === "number" &&
+          Number.isFinite(rawRequestedCount)
+        ? Math.max(
+          1,
+          Math.min(Math.floor(rawRequestedCount), maxRequestedListings),
+        )
+        : null;
+      documentBudget = requestedListingCount
+        ? Math.min(
+          requestedListingCount + knowledgeDocumentSlots,
+          maxDocumentBudget,
+        )
+        : maxDocuments;
       retrievedDocuments = await retrieveContext(
         retrievalQuery || latestQuestion,
         req.headers.get("authorization"),
         listingIds,
         listingCriteria,
+        documentBudget,
       );
       if (matchedListingIds.length > 0) {
         const { data: verifiedListings, error: verifiedListingsError } =
@@ -639,7 +673,10 @@ Deno.serve(async (req: Request) => {
         headers: corsHeaders,
       });
     }
-    const retrievedContext = buildRetrievedContext(retrievedDocuments);
+    const retrievedContext = buildRetrievedContext(
+      retrievedDocuments,
+      documentBudget,
+    );
     const ambiguousListingMatch = !activeListingId && !preferredListingId &&
       matchedListingIds.length > 1;
     const openAiMessages: OpenAIMessage[] = [{
@@ -727,7 +764,7 @@ Deno.serve(async (req: Request) => {
             preferredTime ? ` at ${preferredTime}` : ""
           }. It is pending confirmation from the property team.`,
         model,
-        sources: publicSources(retrievedDocuments),
+        sources: publicSources(retrievedDocuments, documentBudget),
       }, { headers: corsHeaders });
     } else {
       payload = await runOpenAIRequest(
@@ -765,7 +802,7 @@ Deno.serve(async (req: Request) => {
             arguments: argumentsObject,
           },
           model,
-          sources: publicSources(retrievedDocuments),
+          sources: publicSources(retrievedDocuments, documentBudget),
         }, { headers: corsHeaders });
       }
     }
@@ -774,7 +811,7 @@ Deno.serve(async (req: Request) => {
       content: payload.choices?.[0]?.message?.content ||
         "I could not generate a response just now. Please try again.",
       model,
-      sources: publicSources(retrievedDocuments),
+      sources: publicSources(retrievedDocuments, documentBudget),
     }, { headers: corsHeaders });
   } catch (error) {
     console.error("Vanguard chat failed", error);
