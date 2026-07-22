@@ -148,6 +148,18 @@ function extractLocation(query: string) {
     null;
 }
 
+function extractDistinctiveListingPhrases(query: string) {
+  const normalized = query.toLowerCase().replace(/\s+/g, " ").trim();
+  const phrases = new Set<string>();
+  const ridge = normalized.match(/\b[a-z0-9]+\s+ridge\b/);
+  if (ridge) phrases.add(ridge[0]);
+  const lot = normalized.match(/\blot\s+[a-z0-9-]+\b/);
+  if (lot) phrases.add(lot[0]);
+  const block = normalized.match(/\bblock\s+[a-z0-9-]+\b/);
+  if (block) phrases.add(block[0]);
+  return [...phrases].filter((phrase) => phrase.length >= 5).slice(0, 3);
+}
+
 function isChatMessage(value: unknown): value is ChatMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
@@ -253,10 +265,12 @@ async function retrieveContext(
     mean_pool: true,
     normalize: true,
   }) as number[];
+  const distinctivePhrases = extractDistinctiveListingPhrases(query);
   const [
     { data: listings, error: listingsError },
     { data: knowledge, error: knowledgeError },
     { data: hintedListings, error: hintedListingsError },
+    directMatches,
   ] = await Promise.all([
     supabase.rpc("search_bataan_properties", {
       search_text: listingSearchText(query),
@@ -275,11 +289,26 @@ async function retrieveContext(
         "id, title, price, location, bedrooms, bathrooms, floor_area, source_url, scraped_at",
       ).in("id", listingIds.slice(0, 10))
       : Promise.resolve({ data: [], error: null }),
+    Promise.all(
+      distinctivePhrases.map((phrase) =>
+        supabase.from("bataan_properties").select(
+          "id, title, price, location, bedrooms, bathrooms, floor_area, source_url, scraped_at",
+        ).ilike("location", `%${phrase}%`).limit(10)
+      ),
+    ),
   ]);
   if (listingsError) throw listingsError;
   if (knowledgeError) throw knowledgeError;
   if (hintedListingsError) throw hintedListingsError;
-  const typedListings = [...(hintedListings ?? []), ...(listings ?? [])]
+  const directListings = directMatches.flatMap((result) => {
+    if (result.error) throw result.error;
+    return result.data ?? [];
+  });
+  const typedListings = [
+    ...directListings,
+    ...(hintedListings ?? []),
+    ...(listings ?? []),
+  ]
     .filter((listing, index, all) =>
       all.findIndex((candidate) => candidate.id === listing.id) === index
     ) as Listing[];
@@ -407,6 +436,13 @@ Deno.serve(async (req: Request) => {
       });
     }
     const retrievedContext = buildRetrievedContext(retrievedDocuments);
+    const preferredListingId = activeListingId ?? (
+      extractDistinctiveListingPhrases(retrievalQuery).length > 0
+        ? retrievedDocuments.find((document) =>
+          document.category === "listing" && isUuid(document.id)
+        )?.id ?? null
+        : null
+    );
     const openAiMessages: OpenAIMessage[] = [{
       role: "system",
       content: `${
@@ -464,7 +500,12 @@ Deno.serve(async (req: Request) => {
       }
       const toolResult = result as Record<string, unknown>;
       if (toolResult.success !== true) {
-        return Response.json({ error: "VIEWING_REQUEST_FAILED" }, {
+        return Response.json({
+          error: "VIEWING_REQUEST_FAILED",
+          message: toolResult.error === "That property could not be found"
+            ? "The selected property could not be found. Please select the listing again and retry."
+            : "The viewing request could not be submitted. Please select the listing again and retry.",
+        }, {
           status: 422,
           headers: corsHeaders,
         });
@@ -494,6 +535,15 @@ Deno.serve(async (req: Request) => {
           argumentsObject = JSON.parse(toolCall?.function?.arguments ?? "{}");
         } catch {
           argumentsObject = {};
+        }
+        if (
+          preferredListingId && argumentsObject &&
+          typeof argumentsObject === "object"
+        ) {
+          argumentsObject = {
+            ...(argumentsObject as Record<string, unknown>),
+            property_id: preferredListingId,
+          };
         }
         return Response.json({
           content:

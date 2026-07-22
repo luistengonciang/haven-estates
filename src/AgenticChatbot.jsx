@@ -55,7 +55,9 @@ async function fetchAIResponse(history, approvedAction = null, activeListing = n
     const payload = error.context instanceof Response
       ? await error.context.clone().json().catch(() => null)
       : null;
-    throw new Error(payload?.error || error.message);
+    const requestError = new Error(payload?.message || payload?.error || error.message);
+    requestError.code = payload?.error;
+    throw requestError;
   }
   if (data?.error) throw new Error(data.error);
 
@@ -135,7 +137,11 @@ export default function AgenticChatbot({ activeListing = null }) {
       const response = await fetchAIResponse(messages, pendingAction, activeListing);
       setMessages((items) => [...items, { role: 'assistant', ...response }]);
     } catch (error) {
-      setErrorState('Vanguard could not submit that request. Please try again.');
+      setErrorState(
+        error.code === 'VIEWING_REQUEST_FAILED'
+          ? error.message
+          : 'Vanguard could not submit that request. Please try again.',
+      );
       setMessages((items) => items.map((item, index) => index === messageIndex
         ? { ...item, actionState: null }
         : item));
