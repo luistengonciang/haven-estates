@@ -15,6 +15,8 @@ const maxMessageCharacters = 2_000;
 const maxConversationCharacters = 10_000;
 const maxDocuments = 5;
 const maxDocumentCharacters = 1_200;
+const maxExtractionCharacters = 1_200;
+const maxExtractionUserMessages = 3;
 
 const systemPrompt =
   `You are Vanguard, Haven Estates' reliable real-estate advisor for Bataan, Philippines. {CURRENT_DATE_IN_USER_TIMEZONE}
@@ -203,13 +205,16 @@ async function extractListingCriteria(
         role: "system",
         content:
           "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules.",
-      }, { role: "user", content: query.slice(-maxConversationCharacters) }],
+      }, { role: "user", content: query.slice(-maxExtractionCharacters) }],
     }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     console.error("Listing criteria extraction failed", payload);
     return null;
+  }
+  if (payload.usage) {
+    console.log("Vanguard token usage [extract]", payload.usage);
   }
   try {
     return JSON.parse(
@@ -391,8 +396,14 @@ async function runOpenAIRequest(
     console.error("OpenAI request failed", payload);
     throw new Error("OPENAI_REQUEST_FAILED");
   }
+  if (payload.usage) {
+    console.log("Vanguard token usage [chat]", payload.usage);
+  }
   return payload;
 }
+
+const bookingIntentPattern =
+  /\b(view|viewing|visit|tour|schedule|book|booking|appointment|see it|check it out|confirm)\b/i;
 
 async function retrieveContext(
   query: string,
@@ -422,7 +433,7 @@ async function retrieveContext(
       match_count: 10,
       max_price: criteria?.price ?? null,
       property_type: criteria?.property_type || null,
-      location_filter: criteria?.location_terms?.join(" ") || null,
+      location_filter: criteria?.location_terms?.[0] || null,
     }),
     supabase.rpc("match_knowledge_documents", {
       query_embedding: Array.from(embedding),
@@ -517,7 +528,9 @@ Deno.serve(async (req: Request) => {
     const activeListingId = getActiveListingId(activeListing);
     if (
       !Array.isArray(messages) ||
-      !messages.some(isChatMessage)
+      !messages.some((message) =>
+        isChatMessage(message) && message.role === "user"
+      )
     ) {
       return Response.json({ error: "Valid user messages are required." }, {
         status: 400,
@@ -540,12 +553,27 @@ Deno.serve(async (req: Request) => {
         error: "Conversation is too long. Start a new question.",
       }, { status: 400, headers: corsHeaders });
     }
-    const latestQuestion = [...safeMessages].reverse().find((message) =>
+    const latestUserMessage = [...safeMessages].reverse().find((message) =>
       message.role === "user"
-    )!.content;
+    );
+    if (!latestUserMessage) {
+      return Response.json({ error: "Valid user messages are required." }, {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
+    const latestQuestion = latestUserMessage.content;
     const retrievalQuery = safeMessages.slice(-6).map((message) =>
       message.content
     ).join(" ");
+    // User-only text keeps intent detection and criteria extraction from being
+    // skewed (and needlessly re-billed) by the assistant's own prior replies,
+    // which routinely contain the same real-estate keywords.
+    const userIntentText = safeMessages.filter((message) =>
+      message.role === "user"
+    ).slice(-maxExtractionUserMessages).map((message) => message.content).join(
+      " ",
+    ).slice(-maxExtractionCharacters);
     const supabase = authenticatedSupabase(req.headers.get("authorization"));
     let preferredListingId = activeListingId;
     let matchedListingIds: string[] = activeListingId ? [activeListingId] : [];
@@ -555,10 +583,10 @@ Deno.serve(async (req: Request) => {
     let listingCriteria: ListingCriteria | null = null;
     try {
       if (!preferredListingId) {
-        if (isPropertySearchQuery(retrievalQuery)) {
+        if (isPropertySearchQuery(userIntentText || latestQuestion)) {
           listingCriteria = await extractListingCriteria(
             openaiApiKey,
-            retrievalQuery || latestQuestion,
+            userIntentText || latestQuestion,
           );
         }
         const listingMatch = await resolveExactListingId(
@@ -620,6 +648,11 @@ Deno.serve(async (req: Request) => {
           : ""
       }${verifiedListingContext}${retrievedContext}`,
     }, ...safeMessages];
+    // Only pay the tool-schema token overhead when a viewing request is
+    // plausible: a listing is already selected/resolved, or the user's
+    // recent messages actually mention booking a viewing.
+    const allowTools = Boolean(activeListingId || preferredListingId) ||
+      bookingIntentPattern.test(retrievalQuery);
     let payload;
 
     if (approvedAction) {
@@ -686,7 +719,11 @@ Deno.serve(async (req: Request) => {
         sources: publicSources(retrievedDocuments),
       }, { headers: corsHeaders });
     } else {
-      payload = await runOpenAIRequest(openaiApiKey, openAiMessages);
+      payload = await runOpenAIRequest(
+        openaiApiKey,
+        openAiMessages,
+        allowTools,
+      );
       const assistantMessage = payload.choices?.[0]?.message;
       const toolCalls = Array.isArray(assistantMessage?.tool_calls)
         ? assistantMessage.tool_calls
