@@ -9,24 +9,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      PROJECT_ID: tfyytkypvtdpottntzjq
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Upgraded to v3 for modern CLI support
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v3
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
         with:
           version: latest
-
-      # Added --no-verify-jwt flag if public, or explicit project deployment
-      - name: Deploy Edge Function
-        run: |
-          supabase functions deploy vanguard-chat \
-            --project-ref $PROJECT_ID \
-            --debug
+      - run: supabase functions deploy --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
