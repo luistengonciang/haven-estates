@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowUp,
   Bot,
+  CheckCircle2,
   LoaderCircle,
   Maximize2,
   MessageCircle,
@@ -28,15 +29,15 @@ const statusSteps = [
 
 const model = 'gpt-4o-mini';
 
-async function fetchAIResponse(history) {
+async function fetchAIResponse(history, approvedAction = null) {
   if (!supabase || !supabaseConfigReady) {
     throw new Error('MISSING_SUPABASE');
   }
 
   const { data, error } = await supabase.functions.invoke('vanguard-chat', {
-    body: {
-      messages: history,
-    },
+    body: approvedAction
+      ? { messages: history, approvedAction }
+      : { messages: history },
   });
 
   if (error) {
@@ -50,6 +51,7 @@ async function fetchAIResponse(history) {
   return {
     content: data?.content || 'I could not generate a response just now. Please try again.',
     sources: Array.isArray(data?.sources) ? data.sources : [],
+    pendingAction: data?.pendingAction || null,
   };
 }
 
@@ -110,6 +112,33 @@ export default function AgenticChatbot() {
     }
   };
 
+  const approveAction = async (messageIndex, pendingAction) => {
+    if (thinking) return;
+    setErrorState(null);
+    setThinking(true);
+    setStatus('Submitting your viewing request...');
+    setMessages((items) => items.map((item, index) => index === messageIndex
+      ? { ...item, actionState: 'approving' }
+      : item));
+    try {
+      const response = await fetchAIResponse(messages, pendingAction);
+      setMessages((items) => [...items, { role: 'assistant', ...response }]);
+    } catch (error) {
+      setErrorState('Vanguard could not submit that request. Please try again.');
+      setMessages((items) => items.map((item, index) => index === messageIndex
+        ? { ...item, actionState: null }
+        : item));
+    } finally {
+      setThinking(false);
+    }
+  };
+
+  const cancelAction = (messageIndex) => {
+    setMessages((items) => items.map((item, index) => index === messageIndex
+      ? { ...item, actionState: 'cancelled', pendingAction: null }
+      : item));
+  };
+
   return (
     <div className="chatbot">
       <div className={`chat-window ${open ? 'chat-window-open' : ''} ${fullscreen ? 'chat-window-fullscreen' : ''}`} aria-hidden={!open}>
@@ -144,6 +173,17 @@ export default function AgenticChatbot() {
                     ))}
                   </div>
                 )}
+                {message.pendingAction && (
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+                    <div className="flex items-center gap-2 font-semibold"><CheckCircle2 size={15} /> Viewing request</div>
+                    <p className="mt-2 leading-5">Preferred date: <strong>{message.pendingAction.arguments?.preferred_date || 'Not specified'}</strong>{message.pendingAction.arguments?.preferred_time ? ` at ${message.pendingAction.arguments.preferred_time}` : ''}</p>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" className="rounded-lg bg-emerald-800 px-3 py-2 font-semibold text-white disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => approveAction(index, message.pendingAction)}>{message.actionState === 'approving' ? 'Submitting...' : 'Confirm request'}</button>
+                      <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 font-semibold text-emerald-900 disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => cancelAction(index)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {message.actionState === 'cancelled' && <p className="mt-2 text-xs text-slate-500">Viewing request cancelled.</p>}
               </div>
             </div>
           ))}
