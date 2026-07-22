@@ -213,10 +213,10 @@ async function resolveExactListingId(
   query: string,
 ) {
   const queryTerms = listingMatchTerms(query);
-  if (queryTerms.length < 2) return null;
+  if (queryTerms.length < 2) return { id: null, candidateIds: [] as string[] };
 
   const { data, error } = await supabase.from("bataan_properties").select(
-    "id, title, location",
+    "id, title, location, price",
   ).limit(1000);
   if (error) throw error;
 
@@ -242,6 +242,9 @@ async function resolveExactListingId(
     );
     return {
       id: row.id as string,
+      title: String(row.title ?? "Property listing"),
+      location: String(row.location ?? ""),
+      price: String(row.price ?? "Price unavailable"),
       score: titleMatches.length * 5 + locationMatches.length * 3 +
         phraseMatches.length * 8,
       matchedCount: matchedTerms.length,
@@ -255,16 +258,19 @@ async function resolveExactListingId(
     !best || best.matchedCount < 2 ||
     best.matchedCount / queryTerms.length < 0.4
   ) {
-    return null;
+    return { id: null, candidateIds: [] as string[] };
   }
-  const runnerUp = candidates[1];
-  if (
-    runnerUp && runnerUp.score === best.score &&
-    runnerUp.matchedCount === best.matchedCount
-  ) {
-    return null;
+  const tiedCandidates = candidates.filter((candidate) =>
+    candidate.score === best.score &&
+    candidate.matchedCount === best.matchedCount
+  );
+  if (tiedCandidates.length > 1) {
+    return {
+      id: null,
+      candidateIds: tiedCandidates.slice(0, 5).map((candidate) => candidate.id),
+    };
   }
-  return best.id;
+  return { id: best.id, candidateIds: [best.id] };
 }
 
 function isChatMessage(value: unknown): value is ChatMessage {
@@ -522,17 +528,21 @@ Deno.serve(async (req: Request) => {
     ).join(" ");
     const supabase = authenticatedSupabase(req.headers.get("authorization"));
     let preferredListingId = activeListingId;
+    let matchedListingIds: string[] = activeListingId ? [activeListingId] : [];
     let listingIds: string[] = [];
     let retrievedDocuments: RetrievedDocument[] = [];
     try {
       if (!preferredListingId) {
-        preferredListingId = await resolveExactListingId(
+        const listingMatch = await resolveExactListingId(
           supabase,
           retrievalQuery || latestQuestion,
         );
+        preferredListingId = listingMatch.id;
+        matchedListingIds = listingMatch.candidateIds;
       }
       listingIds = [
         preferredListingId,
+        ...matchedListingIds,
         ...messages.filter(isChatMessage).flatMap((message) =>
           (message.sources ?? [])
             .filter((source) => source.category === "listing" && source.id)
@@ -552,6 +562,8 @@ Deno.serve(async (req: Request) => {
       });
     }
     const retrievedContext = buildRetrievedContext(retrievedDocuments);
+    const ambiguousListingMatch = !activeListingId && !preferredListingId &&
+      matchedListingIds.length > 1;
     const openAiMessages: OpenAIMessage[] = [{
       role: "system",
       content: `${
@@ -562,6 +574,10 @@ Deno.serve(async (req: Request) => {
       }${
         activeListingId
           ? `\nThe user currently has this property selected: ${activeListingId}. When they say this property or the first one, use the verified retrieved record with this ID.`
+          : ""
+      }${
+        ambiguousListingMatch
+          ? "\nSeveral verified listing records match the user's description. Explain that there are multiple matches and ask the user to choose using the supplied prices, listing details, or foreclosure status. Do not say that no details are available, and do not create a viewing request until one specific listing is selected."
           : ""
       }${retrievedContext}`,
     }, ...safeMessages];
