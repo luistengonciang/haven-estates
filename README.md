@@ -73,10 +73,10 @@ Migrations are timestamped in `supabase/migrations/` and should be applied befor
 
 1. The browser sends bounded chat history, the user timezone, and an optional selected listing ID.
 2. The server validates the request and calculates the user’s local date for words such as “tomorrow.”
-3. For booking intent, the model extracts structured property criteria such as name, location, status, lot/block, area, price, and normalized search terms. It can interpret natural language, abbreviations, and misspellings; property matching does not depend on a hardcoded user stop-word list.
+3. For property-search intent, the model extracts structured property criteria such as name, location, status, lot/block, price, an explicit requested listing count, and normalized search terms, using only the latest message plus one prior message for context so an earlier turn's location or budget doesn't bleed into an unrelated later question. It can interpret natural language, abbreviations, and misspellings; property matching does not depend on a hardcoded user stop-word list.
 4. The server verifies those criteria against `bataan_properties`. The model may interpret a description, but it cannot invent a UUID.
 5. Exact verified listing records are placed ahead of general RAG results. If several records match, Vanguard asks the user to choose instead of guessing.
-6. General retrieval combines listing search with knowledge-document vector search. Retrieved material is labeled as reference data and is never treated as executable instructions.
+6. General retrieval combines listing search with knowledge-document vector search, sized to the requested listing count when the user asks for a specific number (up to a ceiling of 10). Retrieved material is labeled as reference data and is never treated as executable instructions.
 7. The model answers with source citations and uncertainty when records are incomplete or non-live.
 
 ### Viewing request approval
