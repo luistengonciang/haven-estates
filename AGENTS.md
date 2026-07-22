@@ -12,7 +12,7 @@
 - `knowledge_documents` contains curated reference material and 384-dimensional pgvector embeddings. It supports general RAG guidance, not authoritative live availability.
 - `viewing_requests` stores user-approved viewing requests. It has owner-only RLS and a partial unique index preventing duplicate pending requests for the same user, property, and date.
 - `vanguard-chat` owns authentication-aware retrieval, server-side OpenAI calls, criteria extraction, exact listing verification, source labeling, date interpretation, and tool execution.
-- The current deployed `vanguard-chat` release is version 30. Keep the source and deployment together when changing its extraction or retrieval behavior.
+- The current deployed `vanguard-chat` release is version 32. Keep the source and deployment together when changing its extraction or retrieval behavior.
 - The browser may send a selected listing UUID and bounded chat history, but it must never send retrieved documents or trusted database facts for the server to accept without re-querying.
 - Listing descriptions are interpreted by the model into structured criteria. Do not add user-specific stop-word or abbreviation rules; improve the extraction schema or generic database matching instead. The model can interpret language; the server must verify the result.
 - `create_viewing_request` is a confirmation-gated tool. It validates the property, date, confirmation flag, duplicate state, and authenticated user before inserting through RLS.
