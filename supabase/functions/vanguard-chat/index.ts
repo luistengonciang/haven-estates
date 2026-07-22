@@ -160,6 +160,113 @@ function extractDistinctiveListingPhrases(query: string) {
   return [...phrases].filter((phrase) => phrase.length >= 5).slice(0, 3);
 }
 
+const listingMatchStopWords = new Set([
+  "about",
+  "appointment",
+  "book",
+  "confirm",
+  "confirmed",
+  "could",
+  "first",
+  "for",
+  "from",
+  "have",
+  "i",
+  "in",
+  "interested",
+  "like",
+  "me",
+  "my",
+  "one",
+  "please",
+  "property",
+  "request",
+  "schedule",
+  "the",
+  "this",
+  "to",
+  "tomorrow",
+  "view",
+  "viewing",
+  "want",
+  "would",
+  "yes",
+]);
+
+function normalizeListingText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\bbrgy\b/g, "barangay")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function listingMatchTerms(query: string) {
+  return normalizeListingText(query).split(" ").filter((term) =>
+    term.length >= 2 && !listingMatchStopWords.has(term)
+  );
+}
+
+async function resolveExactListingId(
+  supabase: ReturnType<typeof createClient>,
+  query: string,
+) {
+  const queryTerms = listingMatchTerms(query);
+  if (queryTerms.length < 2) return null;
+
+  const { data, error } = await supabase.from("bataan_properties").select(
+    "id, title, location",
+  ).limit(1000);
+  if (error) throw error;
+
+  const queryText = normalizeListingText(query);
+  const candidates = (data ?? []).map((row) => {
+    const title = normalizeListingText(row.title);
+    const location = normalizeListingText(row.location);
+    const searchable = `${title} ${location}`;
+    const matchedTerms = queryTerms.filter((term) =>
+      searchable.split(" ").includes(term)
+    );
+    const titleMatches = queryTerms.filter((term) =>
+      title.split(" ").includes(term)
+    );
+    const locationMatches = queryTerms.filter((term) =>
+      location.split(" ").includes(term)
+    );
+    const phraseMatches = extractDistinctiveListingPhrases(queryText).filter((
+      phrase,
+    ) =>
+      location.includes(normalizeListingText(phrase)) ||
+      title.includes(normalizeListingText(phrase))
+    );
+    return {
+      id: row.id as string,
+      score: titleMatches.length * 5 + locationMatches.length * 3 +
+        phraseMatches.length * 8,
+      matchedCount: matchedTerms.length,
+    };
+  }).filter((candidate) => isUuid(candidate.id)).sort((a, b) =>
+    b.score - a.score || b.matchedCount - a.matchedCount
+  );
+
+  const best = candidates[0];
+  if (
+    !best || best.matchedCount < 2 ||
+    best.matchedCount / queryTerms.length < 0.4
+  ) {
+    return null;
+  }
+  const runnerUp = candidates[1];
+  if (
+    runnerUp && runnerUp.score === best.score &&
+    runnerUp.matchedCount === best.matchedCount
+  ) {
+    return null;
+  }
+  return best.id;
+}
+
 function isChatMessage(value: unknown): value is ChatMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
@@ -397,14 +504,6 @@ Deno.serve(async (req: Request) => {
       role: message.role,
       content: message.content.trim(),
     }));
-    const listingIds = [
-      activeListingId,
-      ...messages.filter(isChatMessage).flatMap((message) =>
-        (message.sources ?? [])
-          .filter((source) => source.category === "listing" && source.id)
-          .map((source) => source.id as string)
-      ),
-    ].filter((id): id is string => Boolean(id)).slice(0, 10);
     if (
       safeMessages.reduce(
         (total, message) => total + message.content.length,
@@ -421,8 +520,25 @@ Deno.serve(async (req: Request) => {
     const retrievalQuery = safeMessages.slice(-6).map((message) =>
       message.content
     ).join(" ");
+    const supabase = authenticatedSupabase(req.headers.get("authorization"));
+    let preferredListingId = activeListingId;
+    let listingIds: string[] = [];
     let retrievedDocuments: RetrievedDocument[] = [];
     try {
+      if (!preferredListingId) {
+        preferredListingId = await resolveExactListingId(
+          supabase,
+          retrievalQuery || latestQuestion,
+        );
+      }
+      listingIds = [
+        preferredListingId,
+        ...messages.filter(isChatMessage).flatMap((message) =>
+          (message.sources ?? [])
+            .filter((source) => source.category === "listing" && source.id)
+            .map((source) => source.id as string)
+        ),
+      ].filter((id): id is string => Boolean(id)).slice(0, 10);
       retrievedDocuments = await retrieveContext(
         retrievalQuery || latestQuestion,
         req.headers.get("authorization"),
@@ -436,13 +552,6 @@ Deno.serve(async (req: Request) => {
       });
     }
     const retrievedContext = buildRetrievedContext(retrievedDocuments);
-    const preferredListingId = activeListingId ?? (
-      extractDistinctiveListingPhrases(retrievalQuery).length > 0
-        ? retrievedDocuments.find((document) =>
-          document.category === "listing" && isUuid(document.id)
-        )?.id ?? null
-        : null
-    );
     const openAiMessages: OpenAIMessage[] = [{
       role: "system",
       content: `${
@@ -456,7 +565,6 @@ Deno.serve(async (req: Request) => {
           : ""
       }${retrievedContext}`,
     }, ...safeMessages];
-    const supabase = authenticatedSupabase(req.headers.get("authorization"));
     let payload;
 
     if (approvedAction) {
