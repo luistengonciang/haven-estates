@@ -99,7 +99,9 @@ function getUserDate(timeZone: string) {
 }
 
 function listingSearchText(query: string) {
-  return query.trim().slice(0, maxConversationCharacters);
+  const terms = query.toLowerCase().match(/[a-z0-9]+(?:[.,][a-z0-9]+)*/g) ?? [];
+  return terms.slice(0, 40).join(" OR ") ||
+    query.trim().slice(0, maxConversationCharacters);
 }
 
 function normalizeListingText(value: unknown) {
@@ -216,6 +218,11 @@ async function extractListingCriteria(
   } catch {
     return null;
   }
+}
+
+function isPropertySearchQuery(query: string) {
+  return /\b(buy|buying|purchase|purchasing|find|show|suggest|recommend|property|properties|listing|listings|home|house|houses|lot|budget|price|bedroom|bataan|abucay|balanga)\b/i
+    .test(query);
 }
 
 async function resolveExactListingId(
@@ -413,9 +420,9 @@ async function retrieveContext(
     supabase.rpc("search_bataan_properties", {
       search_text: listingCriteriaText(criteria) || listingSearchText(query),
       match_count: 10,
-      max_price: null,
+      max_price: criteria?.price ?? null,
       property_type: criteria?.property_type || null,
-      location_filter: null,
+      location_filter: criteria?.location_terms?.join(" ") || null,
     }),
     supabase.rpc("match_knowledge_documents", {
       query_embedding: Array.from(embedding),
@@ -548,11 +555,7 @@ Deno.serve(async (req: Request) => {
     let listingCriteria: ListingCriteria | null = null;
     try {
       if (!preferredListingId) {
-        if (
-          /\b(book|schedule|appointment|view|viewing|visit)\b/i.test(
-            retrievalQuery,
-          )
-        ) {
+        if (isPropertySearchQuery(retrievalQuery)) {
           listingCriteria = await extractListingCriteria(
             openaiApiKey,
             retrievalQuery || latestQuestion,
