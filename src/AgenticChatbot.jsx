@@ -37,15 +37,18 @@ function getUserTimeZone() {
   }
 }
 
-async function fetchAIResponse(history, approvedAction = null) {
+async function fetchAIResponse(history, approvedAction = null, activeListing = null) {
   if (!supabase || !supabaseConfigReady) {
     throw new Error('MISSING_SUPABASE');
   }
 
   const { data, error } = await supabase.functions.invoke('vanguard-chat', {
-    body: approvedAction
-      ? { messages: history, approvedAction, timeZone: getUserTimeZone() }
-      : { messages: history, timeZone: getUserTimeZone() },
+    body: {
+      messages: history,
+      ...(approvedAction ? { approvedAction } : {}),
+      ...(activeListing?.id ? { activeListing: { id: activeListing.id } } : {}),
+      timeZone: getUserTimeZone(),
+    },
   });
 
   if (error) {
@@ -63,7 +66,7 @@ async function fetchAIResponse(history, approvedAction = null) {
   };
 }
 
-export default function AgenticChatbot() {
+export default function AgenticChatbot({ activeListing = null }) {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [input, setInput] = useState('');
@@ -129,7 +132,7 @@ export default function AgenticChatbot() {
       ? { ...item, actionState: 'approving' }
       : item));
     try {
-      const response = await fetchAIResponse(messages, pendingAction);
+      const response = await fetchAIResponse(messages, pendingAction, activeListing);
       setMessages((items) => [...items, { role: 'assistant', ...response }]);
     } catch (error) {
       setErrorState('Vanguard could not submit that request. Please try again.');

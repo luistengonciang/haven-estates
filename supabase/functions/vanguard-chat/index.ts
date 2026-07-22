@@ -162,6 +162,18 @@ function isChatMessage(value: unknown): value is ChatMessage {
     message.content.length <= maxMessageCharacters && validSources;
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(value);
+}
+
+function getActiveListingId(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const id = (value as Record<string, unknown>).id;
+  return isUuid(id) ? id : null;
+}
+
 function buildRetrievedContext(documents: RetrievedDocument[]) {
   const sources = documents.slice(0, maxDocuments).map((document, index) => {
     const title = document.title?.trim() || `Source ${index + 1}`;
@@ -336,9 +348,11 @@ Deno.serve(async (req: Request) => {
       messages = [],
       approvedAction = null,
       timeZone: requestedTimeZone = "UTC",
+      activeListing = null,
     } = await req.json();
     const userTimeZone = getUserTimeZone(requestedTimeZone);
     const userToday = getUserDate(userTimeZone);
+    const activeListingId = getActiveListingId(activeListing);
     if (
       !Array.isArray(messages) ||
       !messages.some(isChatMessage)
@@ -354,11 +368,14 @@ Deno.serve(async (req: Request) => {
       role: message.role,
       content: message.content.trim(),
     }));
-    const listingIds = messages.filter(isChatMessage).flatMap((message) =>
-      (message.sources ?? [])
-        .filter((source) => source.category === "listing" && source.id)
-        .map((source) => source.id as string)
-    ).slice(-10);
+    const listingIds = [
+      activeListingId,
+      ...messages.filter(isChatMessage).flatMap((message) =>
+        (message.sources ?? [])
+          .filter((source) => source.category === "listing" && source.id)
+          .map((source) => source.id as string)
+      ),
+    ].filter((id): id is string => Boolean(id)).slice(0, 10);
     if (
       safeMessages.reduce(
         (total, message) => total + message.content.length,
@@ -397,6 +414,10 @@ Deno.serve(async (req: Request) => {
           "{CURRENT_DATE_IN_USER_TIMEZONE}",
           `Today is ${userToday} in the user's time zone (${userTimeZone}).`,
         )
+      }${
+        activeListingId
+          ? `\nThe user currently has this property selected: ${activeListingId}. When they say this property or the first one, use the verified retrieved record with this ID.`
+          : ""
       }${retrievedContext}`,
     }, ...safeMessages];
     const supabase = authenticatedSupabase(req.headers.get("authorization"));
