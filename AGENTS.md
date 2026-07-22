@@ -12,8 +12,9 @@
 - `knowledge_documents` contains curated reference material and 384-dimensional pgvector embeddings. It supports general RAG guidance, not authoritative live availability.
 - `viewing_requests` stores user-approved viewing requests. It has owner-only RLS and a partial unique index preventing duplicate pending requests for the same user, property, and date.
 - `vanguard-chat` owns authentication-aware retrieval, server-side OpenAI calls, criteria extraction, exact listing verification, source labeling, date interpretation, and tool execution.
+- The current deployed `vanguard-chat` release is version 25. Keep the source and deployment together when changing its extraction or retrieval behavior.
 - The browser may send a selected listing UUID and bounded chat history, but it must never send retrieved documents or trusted database facts for the server to accept without re-querying.
-- Listing descriptions are interpreted by the model into structured criteria. Do not keep adding user-specific abbreviation rules when a general extraction or database search improvement is appropriate. The model can interpret language; the server must verify the result.
+- Listing descriptions are interpreted by the model into structured criteria. Do not add user-specific stop-word or abbreviation rules; improve the extraction schema or generic database matching instead. The model can interpret language; the server must verify the result.
 - `create_viewing_request` is a confirmation-gated tool. It validates the property, date, confirmation flag, duplicate state, and authenticated user before inserting through RLS.
 - For ambiguous matches, Vanguard must show verified candidate details and ask the user to choose. It must not guess a UUID or claim that no listing exists when retrieval is merely ambiguous.
 - The user’s IANA timezone comes from the browser and is used on the server to resolve relative dates such as “tomorrow.”
