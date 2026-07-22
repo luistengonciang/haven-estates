@@ -67,6 +67,17 @@ type KnowledgeDocument = {
   metadata?: Record<string, unknown>;
   similarity?: number;
 };
+type ListingCriteria = {
+  property_name?: string;
+  location_terms?: string[];
+  property_type?: string;
+  status?: string;
+  lot_number?: string;
+  block_number?: string;
+  area_sqm?: number | null;
+  price?: number | null;
+  search_terms?: string[];
+};
 
 const compact = (value: unknown, limit: number) =>
   String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
@@ -214,11 +225,103 @@ function listingMatchTerms(query: string) {
   );
 }
 
+function listingCriteriaText(criteria: ListingCriteria | null) {
+  if (!criteria) return "";
+  return [
+    criteria.property_name,
+    ...(criteria.location_terms ?? []),
+    criteria.property_type,
+    criteria.status,
+    criteria.lot_number ? `lot ${criteria.lot_number}` : null,
+    criteria.block_number ? `block ${criteria.block_number}` : null,
+    criteria.area_sqm ? `${criteria.area_sqm} sqm` : null,
+    criteria.price ? String(criteria.price) : null,
+    ...(criteria.search_terms ?? []),
+  ].filter(Boolean).join(" ");
+}
+
+async function extractListingCriteria(
+  openaiApiKey: string,
+  query: string,
+) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: 300,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "property_search_criteria",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              property_name: { type: "string" },
+              location_terms: {
+                type: "array",
+                items: { type: "string" },
+              },
+              property_type: { type: "string" },
+              status: { type: "string" },
+              lot_number: { type: "string" },
+              block_number: { type: "string" },
+              area_sqm: { type: ["number", "null"] },
+              price: { type: ["number", "null"] },
+              search_terms: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: [
+              "property_name",
+              "location_terms",
+              "property_type",
+              "status",
+              "lot_number",
+              "block_number",
+              "area_sqm",
+              "price",
+              "search_terms",
+            ],
+            additionalProperties: false,
+          },
+        },
+      },
+      messages: [{
+        role: "system",
+        content:
+          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful normalized equivalents and distinctive names in search_terms.",
+      }, { role: "user", content: query.slice(-maxConversationCharacters) }],
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("Listing criteria extraction failed", payload);
+    return null;
+  }
+  try {
+    return JSON.parse(
+      payload.choices?.[0]?.message?.content ?? "null",
+    ) as ListingCriteria;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveExactListingId(
   supabase: ReturnType<typeof createClient>,
   query: string,
+  criteria: ListingCriteria | null = null,
 ) {
-  const queryTerms = listingMatchTerms(query);
+  const queryTerms = listingMatchTerms(
+    `${query} ${listingCriteriaText(criteria)}`,
+  );
   if (queryTerms.length < 2) return { id: null, candidateIds: [] as string[] };
 
   const { data, error } = await supabase.from("bataan_properties").select(
@@ -557,11 +660,23 @@ Deno.serve(async (req: Request) => {
     let listingIds: string[] = [];
     let retrievedDocuments: RetrievedDocument[] = [];
     let verifiedListingContext = "";
+    let listingCriteria: ListingCriteria | null = null;
     try {
       if (!preferredListingId) {
+        if (
+          /\b(book|schedule|appointment|view|viewing|visit)\b/i.test(
+            retrievalQuery,
+          )
+        ) {
+          listingCriteria = await extractListingCriteria(
+            openaiApiKey,
+            retrievalQuery || latestQuestion,
+          );
+        }
         const listingMatch = await resolveExactListingId(
           supabase,
           retrievalQuery || latestQuestion,
+          listingCriteria,
         );
         preferredListingId = listingMatch.id;
         matchedListingIds = listingMatch.candidateIds;
