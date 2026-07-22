@@ -27,7 +27,7 @@ Supabase Postgres
 
 The browser is responsible for presentation and user intent. The server is responsible for retrieval, authentication, authorization, database writes, and secret-bearing model calls.
 
-Current release: Vanguard `vanguard-chat` Edge Function version 25 is active in Supabase. The repository's latest release commit is kept on the `main` branch.
+Current release: Vanguard `vanguard-chat` Edge Function version 28 is active in Supabase. The repository's latest release commit is kept on the `main` branch.
 
 ## Tech Stack
 
