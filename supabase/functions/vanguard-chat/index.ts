@@ -163,6 +163,7 @@ function extractDistinctiveListingPhrases(query: string) {
 const listingMatchStopWords = new Set([
   "about",
   "appointment",
+  "area",
   "book",
   "confirm",
   "confirmed",
@@ -171,10 +172,12 @@ const listingMatchStopWords = new Set([
   "for",
   "from",
   "have",
+  "house",
   "i",
   "in",
   "interested",
   "like",
+  "lot",
   "me",
   "my",
   "one",
@@ -182,6 +185,7 @@ const listingMatchStopWords = new Set([
   "property",
   "request",
   "schedule",
+  "sqm",
   "the",
   "this",
   "to",
@@ -189,6 +193,7 @@ const listingMatchStopWords = new Set([
   "view",
   "viewing",
   "want",
+  "with",
   "would",
   "yes",
 ]);
@@ -197,6 +202,7 @@ function normalizeListingText(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
     .replace(/\bbrgy\b/g, "barangay")
+    .replace(/\bbrngy\b/g, "barangay")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -309,6 +315,25 @@ function buildRetrievedContext(documents: RetrievedDocument[]) {
   return sources
     ? `\n\n<retrieved_reference_data>\n${sources}\n</retrieved_reference_data>`
     : "";
+}
+
+function buildVerifiedListingContext(
+  listings: Array<Record<string, unknown>>,
+) {
+  if (listings.length === 0) return "";
+  const records = listings.map((listing, index) =>
+    [
+      `[Verified listing ${index + 1}]`,
+      `property id ${compact(listing.id, 60)}`,
+      `title ${compact(listing.title, 120)}`,
+      `price ${compact(listing.price, 60)}`,
+      `location and description ${compact(listing.location, 900)}`,
+      listing.source_url
+        ? `source URL ${compact(listing.source_url, 240)}`
+        : null,
+    ].filter(Boolean).join("; ")
+  ).join("\n");
+  return `\n\n<verified_listing_matches>\n${records}\n</verified_listing_matches>`;
 }
 
 function publicSources(documents: RetrievedDocument[]) {
@@ -531,6 +556,7 @@ Deno.serve(async (req: Request) => {
     let matchedListingIds: string[] = activeListingId ? [activeListingId] : [];
     let listingIds: string[] = [];
     let retrievedDocuments: RetrievedDocument[] = [];
+    let verifiedListingContext = "";
     try {
       if (!preferredListingId) {
         const listingMatch = await resolveExactListingId(
@@ -554,6 +580,16 @@ Deno.serve(async (req: Request) => {
         req.headers.get("authorization"),
         listingIds,
       );
+      if (matchedListingIds.length > 0) {
+        const { data: verifiedListings, error: verifiedListingsError } =
+          await supabase.from("bataan_properties").select(
+            "id, title, price, location, source_url",
+          ).in("id", matchedListingIds);
+        if (verifiedListingsError) throw verifiedListingsError;
+        verifiedListingContext = buildVerifiedListingContext(
+          (verifiedListings ?? []) as Array<Record<string, unknown>>,
+        );
+      }
     } catch (error) {
       console.error("Vanguard retrieval failed", error);
       return Response.json({ error: "RETRIEVAL_UNAVAILABLE" }, {
@@ -579,7 +615,7 @@ Deno.serve(async (req: Request) => {
         ambiguousListingMatch
           ? "\nSeveral verified listing records match the user's description. Explain that there are multiple matches and ask the user to choose using the supplied prices, listing details, or foreclosure status. Do not say that no details are available, and do not create a viewing request until one specific listing is selected."
           : ""
-      }${retrievedContext}`,
+      }${verifiedListingContext}${retrievedContext}`,
     }, ...safeMessages];
     let payload;
 
