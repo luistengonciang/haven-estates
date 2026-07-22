@@ -51,7 +51,7 @@ function isUuid(value: string) {
     .test(value);
 }
 
-function validateArgs(value: unknown): ViewingRequestArgs {
+function validateArgs(value: unknown, today: string): ViewingRequestArgs {
   if (!value || typeof value !== "object") {
     throw new Error("Invalid viewing request arguments");
   }
@@ -78,7 +78,7 @@ function validateArgs(value: unknown): ViewingRequestArgs {
   ) {
     throw new Error("The preferred date is invalid");
   }
-  if (preferredDate < new Date().toISOString().slice(0, 10)) {
+  if (preferredDate < today) {
     throw new Error("The preferred date must be today or a future date");
   }
   if (preferredTime && preferredTime.length > 80) {
@@ -104,8 +104,9 @@ export async function executeViewingRequest(
   supabase: SupabaseClient,
   userId: string,
   rawArgs: unknown,
+  today: string,
 ) {
-  const args = validateArgs(rawArgs);
+  const args = validateArgs(rawArgs, today);
   const { data: property, error: propertyError } = await supabase
     .from("bataan_properties")
     .select("id, title, location")

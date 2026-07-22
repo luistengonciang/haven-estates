@@ -29,6 +29,14 @@ const statusSteps = [
 
 const model = 'gpt-4o-mini';
 
+function getUserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 async function fetchAIResponse(history, approvedAction = null) {
   if (!supabase || !supabaseConfigReady) {
     throw new Error('MISSING_SUPABASE');
@@ -36,8 +44,8 @@ async function fetchAIResponse(history, approvedAction = null) {
 
   const { data, error } = await supabase.functions.invoke('vanguard-chat', {
     body: approvedAction
-      ? { messages: history, approvedAction }
-      : { messages: history },
+      ? { messages: history, approvedAction, timeZone: getUserTimeZone() }
+      : { messages: history, timeZone: getUserTimeZone() },
   });
 
   if (error) {

@@ -15,12 +15,9 @@ const maxMessageCharacters = 2_000;
 const maxConversationCharacters = 10_000;
 const maxDocuments = 5;
 const maxDocumentCharacters = 1_200;
-const manilaToday = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Manila",
-}).format(new Date());
 
 const systemPrompt =
-  `You are Vanguard, Haven Estates' reliable real-estate advisor for Bataan, Philippines. Today is ${manilaToday} in the Philippines.
+  `You are Vanguard, Haven Estates' reliable real-estate advisor for Bataan, Philippines. {CURRENT_DATE_IN_USER_TIMEZONE}
 
 Your priorities, in order: be accurate, follow the user's legitimate request, be clear, and be concise. Use a polished, warm, practical tone. Do not imply you are a lawyer, lender, broker, appraiser, or live-MLS service.
 
@@ -75,6 +72,20 @@ const compact = (value: unknown, limit: number) =>
   String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
 const asPercentage = (value: number) =>
   Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
+
+function getUserTimeZone(value: unknown) {
+  if (typeof value !== "string" || value.length > 100) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: value }).format(new Date());
+    return value;
+  } catch {
+    return "UTC";
+  }
+}
+
+function getUserDate(timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+}
 
 function listingSearchText(query: string) {
   const ignored = new Set([
@@ -321,7 +332,13 @@ Deno.serve(async (req: Request) => {
         headers: corsHeaders,
       });
     }
-    const { messages = [], approvedAction = null } = await req.json();
+    const {
+      messages = [],
+      approvedAction = null,
+      timeZone: requestedTimeZone = "UTC",
+    } = await req.json();
+    const userTimeZone = getUserTimeZone(requestedTimeZone);
+    const userToday = getUserDate(userTimeZone);
     if (
       !Array.isArray(messages) ||
       !messages.some(isChatMessage)
@@ -375,7 +392,12 @@ Deno.serve(async (req: Request) => {
     const retrievedContext = buildRetrievedContext(retrievedDocuments);
     const openAiMessages: OpenAIMessage[] = [{
       role: "system",
-      content: `${systemPrompt}${retrievedContext}`,
+      content: `${
+        systemPrompt.replace(
+          "{CURRENT_DATE_IN_USER_TIMEZONE}",
+          `Today is ${userToday} in the user's time zone (${userTimeZone}).`,
+        )
+      }${retrievedContext}`,
     }, ...safeMessages];
     const supabase = authenticatedSupabase(req.headers.get("authorization"));
     let payload;
@@ -407,6 +429,7 @@ Deno.serve(async (req: Request) => {
           {
             supabase,
             userId: user.user.id,
+            today: userToday,
           },
         );
       } catch (error) {
