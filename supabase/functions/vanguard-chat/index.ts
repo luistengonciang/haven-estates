@@ -16,7 +16,11 @@ const maxConversationCharacters = 10_000;
 const maxDocuments = 5;
 const maxDocumentCharacters = 1_200;
 const maxExtractionCharacters = 1_200;
-const maxExtractionUserMessages = 3;
+// 2, not 3+: with two "earlier" messages present, gpt-4o-mini reliably
+// merges conflicting details (e.g. two different stated locations) instead
+// of letting the newer one supersede the older one. A one-message-back
+// window keeps genuine follow-up refinement working while avoiding that.
+const maxExtractionUserMessages = 2;
 // search_bataan_properties itself caps match_count at 10, so requesting more
 // listings than that can never be fulfilled from a single retrieval call.
 const maxRequestedListings = 10;
@@ -219,7 +223,7 @@ async function extractListingCriteria(
       messages: [{
         role: "system",
         content:
-          "Extract only property-identifying facts explicitly present in the customer message. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules. If the customer explicitly asks for a specific number of properties, listings, or options (such as '10 properties' or 'top 5'), set requested_count to that integer; otherwise set it to null. Never invent a count that was not stated.",
+          "Extract only property-identifying facts explicitly present in the customer messages below. When an earlier message and the most recent message are both shown, the most recent message is the customer's current request. For any detail it restates - location, budget or price, property type, status, or requested count - use only the most recent message's value instead of combining it with the earlier one; the customer is refining or changing their request, not stacking requirements. Only carry forward a detail from the earlier message when the most recent message does not mention that detail at all. Understand natural language, abbreviations, misspellings, and units, such as brngy or brgy meaning barangay. Do not invent a property, address, UUID, price, or detail. Put useful original and normalized equivalents, plus distinctive names, in search_terms so database matching can compare them without application-specific word rules. If the most recent message explicitly asks for a specific number of properties, listings, or options (such as '10 properties' or 'top 5'), set requested_count to that integer; otherwise set it to null. Never invent a count that was not stated.",
       }, { role: "user", content: query.slice(-maxExtractionCharacters) }],
     }),
   });
@@ -597,12 +601,18 @@ Deno.serve(async (req: Request) => {
     ).join(" ");
     // User-only text keeps intent detection and criteria extraction from being
     // skewed (and needlessly re-billed) by the assistant's own prior replies,
-    // which routinely contain the same real-estate keywords.
-    const userIntentText = safeMessages.filter((message) =>
+    // which routinely contain the same real-estate keywords. Each message is
+    // labeled with its recency so the extraction model treats the newest one
+    // as authoritative for any detail it restates, instead of blending a
+    // stale location/budget/count from an earlier, superseded question.
+    const recentUserMessages = safeMessages.filter((message) =>
       message.role === "user"
-    ).slice(-maxExtractionUserMessages).map((message) => message.content).join(
-      " ",
-    ).slice(-maxExtractionCharacters);
+    ).slice(-maxExtractionUserMessages);
+    const userIntentText = recentUserMessages.map((message, index) =>
+      index === recentUserMessages.length - 1
+        ? `Most recent message (use this for any restated details): ${message.content}`
+        : `Earlier message: ${message.content}`
+    ).join("\n").slice(-maxExtractionCharacters);
     const supabase = authenticatedSupabase(req.headers.get("authorization"));
     let preferredListingId = activeListingId;
     let matchedListingIds: string[] = activeListingId ? [activeListingId] : [];
