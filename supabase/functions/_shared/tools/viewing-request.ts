@@ -78,6 +78,9 @@ function validateArgs(value: unknown): ViewingRequestArgs {
   ) {
     throw new Error("The preferred date is invalid");
   }
+  if (preferredDate < new Date().toISOString().slice(0, 10)) {
+    throw new Error("The preferred date must be today or a future date");
+  }
   if (preferredTime && preferredTime.length > 80) {
     throw new Error("The preferred time is too long");
   }
