@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bath, BedDouble, Building2, CalendarCheck, ChevronDown, Clock, ExternalLink, Heart, MapPin, Menu, MoveRight, Search, SlidersHorizontal, Sparkles, Square, TreePine, X } from 'lucide-react';
+import { Bath, BedDouble, Building2, CalendarCheck, Check, ChevronDown, Clock, ExternalLink, Heart, MapPin, Menu, MoveRight, Pencil, RotateCcw, Search, SlidersHorizontal, Sparkles, Square, Trash2, TreePine, X, XCircle } from 'lucide-react';
 import AgenticChatbot from './AgenticChatbot';
 import RagShowcase from './RagShowcase';
 import { AuthControls, useAuth } from './AuthGate';
 import {
   BATAAN_MUNICIPALITIES,
+  cancelViewingRequest,
+  deleteViewingRequest,
   fetchUserViewingRequests,
   filterAndSortProperties,
   getBataanProperties,
   mergeLocalSavedWithCloud,
   removePropertyFromCloud,
   savePropertyToCloud,
+  updateViewingRequest,
 } from './lib/properties';
 
 const PAGE_SIZE = 9;
@@ -72,21 +75,90 @@ function PropertyDialog({ property, onClose, onScheduleViewing }) {
   </div>;
 }
 
-function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty }) {
+function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty, onRefresh }) {
   const closeRef = useRef(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [busyId, setBusyId] = useState(null);
+  const [actionMessage, setActionMessage] = useState('');
 
   useEffect(() => {
     closeRef.current?.focus();
-    const onKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !editingId) onClose(); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [onClose, editingId]);
+
+  const startEditing = (req) => {
+    setEditingId(req.id);
+    setEditDate(req.preferred_date || '');
+    setEditTime(req.preferred_time || 'Morning (9:00 AM - 11:30 AM)');
+    setEditNotes(req.notes || '');
+    setActionMessage('');
+  };
+
+  const handleSaveEdit = async (requestId) => {
+    if (!editDate) {
+      setActionMessage('Please select a preferred viewing date.');
+      return;
+    }
+    setBusyId(requestId);
+    try {
+      await updateViewingRequest(requestId, {
+        preferred_date: editDate,
+        preferred_time: editTime,
+        notes: editNotes,
+        status: 'pending',
+      });
+      setEditingId(null);
+      setActionMessage('Viewing schedule updated successfully!');
+      await onRefresh?.();
+    } catch (err) {
+      setActionMessage(err.message || 'Could not update viewing schedule.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCancelRequest = async (requestId) => {
+    if (!window.confirm('Are you sure you want to cancel this viewing request?')) return;
+    setBusyId(requestId);
+    try {
+      await cancelViewingRequest(requestId);
+      setActionMessage('Viewing request cancelled.');
+      await onRefresh?.();
+    } catch (err) {
+      setActionMessage(err.message || 'Could not cancel viewing request.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeleteRequest = async (requestId) => {
+    if (!window.confirm('Remove this viewing record permanently?')) return;
+    setBusyId(requestId);
+    try {
+      await deleteViewingRequest(requestId);
+      setActionMessage('Viewing record removed.');
+      await onRefresh?.();
+    } catch (err) {
+      setActionMessage(err.message || 'Could not remove viewing record.');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return <div className="property-dialog-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="property-dialog viewing-dialog" role="dialog" aria-modal="true" aria-labelledby="viewings-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
       <button ref={closeRef} className="dialog-close" type="button" onClick={onClose} aria-label="Close viewing appointments">×</button>
       <div className="eyebrow" style={{ color: '#496252', marginBottom: 8 }}><CalendarCheck size={16} /> Private Appointments</div>
-      <h2 id="viewings-dialog-title" style={{ marginBottom: 18 }}>My Viewing Requests</h2>
+      <h2 id="viewings-dialog-title" style={{ marginBottom: 6 }}>My Viewing Requests</h2>
+      <p style={{ margin: '0 0 18px', color: '#687b70', fontSize: 13 }}>Manage or adjust your scheduled property walkthroughs with Melissa Barlin and local advisors.</p>
+
+      {actionMessage && <div className="viewing-alert-banner">{actionMessage}</div>}
+
       {requests.length === 0 ? (
         <div className="property-state" style={{ minHeight: 140 }}>
           <p>No viewing requests scheduled yet.</p>
@@ -96,6 +168,8 @@ function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty 
         <div className="viewing-list">
           {requests.map((req) => {
             const prop = properties.find((p) => p.id === req.property_id);
+            const isEditing = editingId === req.id;
+            const isBusy = busyId === req.id;
             const statusClass = `status-${req.status}`;
             const statusLabel = req.status === 'confirmed' ? 'Confirmed Appointment' : req.status === 'pending' ? 'Pending Advisor Review' : req.status === 'cancelled' ? 'Cancelled' : 'Declined';
 
@@ -111,11 +185,108 @@ function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty 
                   </div>
                   <h4>{prop ? prop.title : 'Bataan Property'}</h4>
                   {prop && <p className="viewing-location"><MapPin size={13} /> {prop.location} · <strong>{prop.price}</strong></p>}
-                  {req.notes && <p className="viewing-notes">"{req.notes}"</p>}
-                  {prop && (
-                    <button type="button" className="detail-button" style={{ padding: '8px 0 0' }} onClick={() => { onClose(); onSelectProperty(prop); }}>
-                      View property details <MoveRight size={14} />
-                    </button>
+
+                  {isEditing ? (
+                    <form className="viewing-edit-form" onSubmit={(e) => { e.preventDefault(); handleSaveEdit(req.id); }}>
+                      <div className="edit-form-grid">
+                        <label>
+                          <span>Preferred Date:</span>
+                          <input
+                            type="date"
+                            required
+                            min={new Date().toISOString().split('T')[0]}
+                            value={editDate}
+                            onChange={(e) => setEditDate(e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>Preferred Time:</span>
+                          <select value={editTime} onChange={(e) => setEditTime(e.target.value)}>
+                            <option value="Morning (9:00 AM - 11:30 AM)">Morning (9:00 AM - 11:30 AM)</option>
+                            <option value="Early Afternoon (1:00 PM - 3:00 PM)">Early Afternoon (1:00 PM - 3:00 PM)</option>
+                            <option value="Late Afternoon (3:30 PM - 5:30 PM)">Late Afternoon (3:30 PM - 5:30 PM)</option>
+                            <option value="Sunset / Golden Hour (5:30 PM)">Sunset / Golden Hour (5:30 PM)</option>
+                            <option value="Flexible / Any Time">Flexible / Any Time</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+                        <span>Notes or Special Requests:</span>
+                        <textarea
+                          rows={2}
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          placeholder="e.g., questions about title, wanting to inspect beachfront, preferred companions"
+                        />
+                      </label>
+                      <div className="edit-form-actions">
+                        <button type="submit" className="save-schedule-btn" disabled={isBusy}>
+                          <Check size={14} /> {isBusy ? 'Saving...' : 'Save Schedule'}
+                        </button>
+                        <button type="button" className="cancel-edit-btn" disabled={isBusy} onClick={() => setEditingId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      {req.notes && <p className="viewing-notes">"{req.notes}"</p>}
+                      <div className="viewing-card-toolbar">
+                        {req.status !== 'cancelled' ? (
+                          <>
+                            <button
+                              type="button"
+                              className="viewing-action-btn edit-action"
+                              disabled={isBusy}
+                              onClick={() => startEditing(req)}
+                              title="Edit viewing schedule"
+                            >
+                              <Pencil size={13} /> Edit schedule
+                            </button>
+                            <button
+                              type="button"
+                              className="viewing-action-btn cancel-action"
+                              disabled={isBusy}
+                              onClick={() => handleCancelRequest(req.id)}
+                              title="Cancel this viewing"
+                            >
+                              <XCircle size={13} /> Cancel request
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="viewing-action-btn edit-action"
+                              disabled={isBusy}
+                              onClick={() => startEditing(req)}
+                              title="Reschedule this viewing"
+                            >
+                              <RotateCcw size={13} /> Reschedule
+                            </button>
+                            <button
+                              type="button"
+                              className="viewing-action-btn delete-action"
+                              disabled={isBusy}
+                              onClick={() => handleDeleteRequest(req.id)}
+                              title="Delete record"
+                            >
+                              <Trash2 size={13} /> Remove
+                            </button>
+                          </>
+                        )}
+                        {prop && (
+                          <button
+                            type="button"
+                            className="detail-button"
+                            style={{ padding: '0', marginLeft: 'auto' }}
+                            onClick={() => { onClose(); onSelectProperty(prop); }}
+                          >
+                            View listing <MoveRight size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </article>
@@ -142,6 +313,8 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewingDrawerOpen, setViewingDrawerOpen] = useState(false);
   const [viewingRequests, setViewingRequests] = useState([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const loadProperties = async () => {
     setLoading(true); setError(null);
@@ -216,13 +389,12 @@ export default function App() {
   const closeDialog = useCallback(() => setSelected(null), []);
 
   const handleScheduleViewing = (property) => {
+    if (!auth?.requireAuth('Sign in to schedule an in-person viewing with our advisors.')) return;
     setActiveListing(property);
     closeDialog();
-    // Open Vanguard chatbot so user can converse with Melissa Barlin / Vanguard
-    const chatFab = document.querySelector('.chat-fab');
-    if (chatFab && !document.querySelector('.chat-window-open')) {
-      chatFab.click();
-    }
+    const prompt = `Hi Vanguard, I would like to schedule an in-person viewing with Melissa Barlin for "${property.title}" in ${property.location} (listed at ${property.price}). What dates and times are available?`;
+    setChatDraft(prompt);
+    setChatOpen(true);
   };
 
   return <main>
@@ -280,9 +452,26 @@ export default function App() {
       {!loading && !error && visibleProperties.length > 0 && <><div className="property-grid">{visibleProperties.map((property) => <PropertyCard property={property} key={property.id} onSelect={selectProperty} isSaved={savedIds.has(property.id)} onToggleSaved={toggleSaved} />)}</div><nav className="pagination" aria-label="Property listing pages"><button type="button" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></nav></>}
     </section>
     {selected && <PropertyDialog property={selected} onClose={closeDialog} onScheduleViewing={handleScheduleViewing} />}
-    {viewingDrawerOpen && <ViewingRequestsModal requests={viewingRequests} properties={properties} onClose={() => setViewingDrawerOpen(false)} onSelectProperty={selectProperty} />}
+    {viewingDrawerOpen && (
+      <ViewingRequestsModal
+        requests={viewingRequests}
+        properties={properties}
+        onClose={() => setViewingDrawerOpen(false)}
+        onSelectProperty={selectProperty}
+        onRefresh={() => loadViewingRequests(auth?.user?.id)}
+      />
+    )}
     <RagShowcase />
     <section className="advisor-banner" id="advisors"><div className="banner-mark"><TreePine size={34} /></div><div><p className="section-kicker">A better way home</p><h2>Expert advice, on your terms.</h2><p>From the first search to the final signature, our local advisors pair intelligence with an exceptionally personal experience.</p></div><a href="#intelligence">Explore the intelligence <MoveRight size={18} /></a></section>
-    <section className="our-story" id="about"><div><p className="section-kicker">Our story</p><h2>Built with curiosity, data, and a local point of view.</h2></div><div className="story-copy"><p>Haven is shaped by Luis Tengonciang, an Applied Mathematics and Data Science student at Ateneo de Manila University. The project brings together thoughtful design, practical data work, and a belief that property discovery should feel more transparent and personal.</p><p>Starting with Bataan, Haven turns scattered listing information into a clearer place to search, compare, and ask better questions before making a decision.</p></div></section><button className="filter-chip" type="button" onClick={() => document.querySelector('#top input')?.focus()}><SlidersHorizontal size={18} /> Refine your search</button><AgenticChatbot activeListing={activeListing} />
+    <section className="our-story" id="about"><div><p className="section-kicker">Our story</p><h2>Built with curiosity, data, and a local point of view.</h2></div><div className="story-copy"><p>Haven is shaped by Luis Tengonciang, an Applied Mathematics and Data Science student at Ateneo de Manila University. The project brings together thoughtful design, practical data work, and a belief that property discovery should feel more transparent and personal.</p><p>Starting with Bataan, Haven turns scattered listing information into a clearer place to search, compare, and ask better questions before making a decision.</p></div></section><button className="filter-chip" type="button" onClick={() => document.querySelector('#top input')?.focus()}><SlidersHorizontal size={18} /> Refine your search</button>
+    <AgenticChatbot
+      activeListing={activeListing}
+      initialDraft={chatDraft}
+      isOpen={chatOpen}
+      onOpenChange={(openState) => {
+        setChatOpen(openState);
+        if (!openState) setChatDraft('');
+      }}
+    />
   </main>;
 }

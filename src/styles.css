@@ -32,4 +32,22 @@
 .viewing-notes{margin:4px 0 0;font-size:12px;font-style:italic;color:#6b7c72}
 .mobile-nav-link-btn{border:0;background:none;color:#e5e8e1;font-size:15px;padding:12px 4px;display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left}
 @media(max-width:550px){.viewing-card{flex-direction:column;align-items:flex-start}.viewing-thumb{width:100%;height:140px}}
+.viewing-alert-banner{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:9px 13px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:14px}
+.viewing-edit-form{margin-top:10px;background:#fff;border:1px solid #dce4d9;border-radius:8px;padding:12px;font-size:12px}
+.edit-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.edit-form-grid label{display:grid;gap:4px;font-weight:600;color:#374b3f}
+.edit-form-grid input,.edit-form-grid select,.viewing-edit-form textarea{border:1px solid #ccd8c9;border-radius:6px;padding:7px 9px;font-size:12px;background:#fdfdfb;width:100%;color:#1d2a24;font-family:'DM Sans',sans-serif}
+.edit-form-actions{display:flex;gap:8px;margin-top:10px}
+.save-schedule-btn{border:0;background:#173c2c;color:#fff;border-radius:6px;padding:7px 14px;font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:.18s}
+.save-schedule-btn:hover{background:#23523d}
+.cancel-edit-btn{border:1px solid #d1dbcf;background:#fff;color:#4b6154;border-radius:6px;padding:7px 12px;font-weight:600;font-size:12px;cursor:pointer}
+.cancel-edit-btn:hover{background:#f4f6f2}
+.viewing-card-toolbar{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.viewing-action-btn{border:1px solid #dce4d9;background:#fff;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;transition:.18s}
+.edit-action{color:#2a503b}
+.edit-action:hover{background:#eff6eb;color:#173c2c;border-color:#bad3b4}
+.cancel-action{color:#991b1b}
+.cancel-action:hover{background:#fef2f2;border-color:#fecaca}
+.delete-action{color:#6b7280}
+.delete-action:hover{background:#f3f4f6;color:#374151}
 

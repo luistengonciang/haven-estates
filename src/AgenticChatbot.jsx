@@ -69,11 +69,11 @@ async function fetchAIResponse(history, approvedAction = null, activeListing = n
   };
 }
 
-export default function AgenticChatbot({ activeListing = null }) {
+export default function AgenticChatbot({ activeListing = null, initialDraft = '', isOpen = false, onOpenChange = null }) {
   const auth = useAuth();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(isOpen);
   const [fullscreen, setFullscreen] = useState(false);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialDraft || '');
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -86,6 +86,33 @@ export default function AgenticChatbot({ activeListing = null }) {
   const endRef = useRef(null);
   const inputRef = useRef(null);
   const timers = useRef([]);
+
+  const handleOpen = (nextOpen) => {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setOpen(true);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (initialDraft) {
+      setInput(initialDraft);
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          try {
+            inputRef.current.setSelectionRange(initialDraft.length, initialDraft.length);
+          } catch {
+            // ignore range error on non-text inputs
+          }
+        }
+      }, 120);
+    }
+  }, [initialDraft]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,14 +127,14 @@ export default function AgenticChatbot({ activeListing = null }) {
   useEffect(() => {
     if (!open) return undefined;
     inputRef.current?.focus();
-    const onKeyDown = (event) => { if (event.key === 'Escape' && !fullscreen) setOpen(false); };
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !fullscreen) handleOpen(false); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, fullscreen]);
 
   const openChat = () => {
     if (!auth?.requireAuth('Sign in to ask Vanguard about these listings.')) return;
-    setOpen(true);
+    handleOpen(true);
   };
 
   const sendMessage = async (value = input) => {
@@ -128,7 +155,7 @@ export default function AgenticChatbot({ activeListing = null }) {
     ];
 
     try {
-      const response = await fetchAIResponse(history);
+      const response = await fetchAIResponse(history, null, activeListing);
       setMessages((items) => [...items, { role: 'assistant', ...response }]);
     } catch (error) {
       // Keep operator detail in the console; visitors get something actionable.
@@ -187,7 +214,7 @@ export default function AgenticChatbot({ activeListing = null }) {
           <button className="icon-button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Exit full screen' : 'Enter full screen'}>
             {fullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
           </button>
-          <button className="icon-button" onClick={() => setOpen(false)} aria-label="Close chat">
+          <button className="icon-button" onClick={() => handleOpen(false)} aria-label="Close chat">
             <X size={20} />
           </button>
         </header>
@@ -274,7 +301,7 @@ export default function AgenticChatbot({ activeListing = null }) {
 
       <button
         className="chat-fab"
-        onClick={() => (open ? setOpen(false) : openChat())}
+        onClick={() => (open ? handleOpen(false) : openChat())}
         aria-label={open ? 'Close advisor chat' : 'Open advisor chat'}
         aria-expanded={open}
       >

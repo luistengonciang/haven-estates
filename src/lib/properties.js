@@ -198,3 +198,34 @@ export async function fetchUserViewingRequests(userId) {
   return data ?? [];
 }
 
+export async function updateViewingRequest(requestId, updates = {}) {
+  if (!supabase || !supabaseConfigReady || !requestId) throw new Error('MISSING_SUPABASE');
+  const payload = {
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('viewing_requests')
+    .update(payload)
+    .eq('id', requestId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelViewingRequest(requestId) {
+  return updateViewingRequest(requestId, { status: 'cancelled' });
+}
+
+export async function deleteViewingRequest(requestId) {
+  if (!supabase || !supabaseConfigReady || !requestId) throw new Error('MISSING_SUPABASE');
+  const { error } = await supabase
+    .from('viewing_requests')
+    .delete()
+    .eq('id', requestId);
+  if (error) throw error;
+  return true;
+}
+
+
