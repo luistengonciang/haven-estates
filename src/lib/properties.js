@@ -1,4 +1,4 @@
-import { supabase, supabaseConfigReady } from './supabase';
+import { supabase, supabaseConfigReady } from './supabase.js';
 
 const LISTINGS_TABLE = 'bataan_properties';
 
@@ -33,10 +33,32 @@ function fallbackImageFrom(row) {
   return images[propertyTypeFrom(row)];
 }
 
+export const BATAAN_MUNICIPALITIES = [
+  'Morong',
+  'Bagac',
+  'Mariveles',
+  'Balanga',
+  'Abucay',
+  'Hermosa',
+  'Limay',
+  'Orani',
+  'Samal',
+  'Orion',
+  'Dinalupihan',
+  'Pilar',
+];
+
+export function detectMunicipality(row) {
+  const text = `${row.location ?? ''} ${row.title ?? ''}`.toLowerCase();
+  return BATAAN_MUNICIPALITIES.find((m) => text.includes(m.toLowerCase())) || null;
+}
+
 export function mapBataanProperty(row) {
   // Real listing photos when the scrape captured them; the type-keyed stock image
   // is only a placeholder for rows scraped before image_urls existed.
   const photos = Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [];
+  const bedroomsNum = row.bedrooms ? parseInt(row.bedrooms, 10) : null;
+  const municipality = detectMunicipality(row);
 
   return {
     id: row.id,
@@ -47,9 +69,11 @@ export function mapBataanProperty(row) {
     fullLocation: String(row.location ?? '').replace(/\s+/g, ' ').trim(),
     description: String(row.description ?? '').replace(/\s+/g, ' ').trim() || null,
     bedrooms: row.bedrooms || '—',
+    bedroomCount: Number.isFinite(bedroomsNum) ? bedroomsNum : null,
     bathrooms: row.bathrooms || '—',
     floorArea: row.floor_area || '—',
     type: propertyTypeFrom(row),
+    municipality,
     photos,
     image: photos[0] || fallbackImageFrom(row),
     hasRealPhoto: photos.length > 0,
@@ -79,7 +103,7 @@ export async function getBataanProperties() {
  * having no parseable price, so the UI can explain their absence instead of
  * dropping them silently.
  */
-export function filterAndSortProperties(properties, { query, priceBand, propertyType, sort }) {
+export function filterAndSortProperties(properties, { query = '', priceBand = '', propertyType = '', municipality = '', bedrooms = '', sort = 'newest' }) {
   const normalizedQuery = query.trim().toLowerCase();
   const priceBands = { under1m: [0, 1_000_000], '1m-5m': [1_000_000, 5_000_000], '5m-10m': [5_000_000, 10_000_000], over10m: [10_000_000, Infinity] };
   const range = priceBands[priceBand];
@@ -87,7 +111,15 @@ export function filterAndSortProperties(properties, { query, priceBand, property
   const filtered = properties.filter((property) => {
     const matchesQuery = !normalizedQuery || property.searchableText.includes(normalizedQuery);
     const matchesType = !propertyType || property.type === propertyType;
-    if (!matchesQuery || !matchesType) return false;
+    const matchesMuni = !municipality || property.municipality === municipality;
+
+    let matchesBeds = true;
+    if (bedrooms === '1') matchesBeds = property.bedroomCount === 1;
+    else if (bedrooms === '2') matchesBeds = property.bedroomCount === 2;
+    else if (bedrooms === '3') matchesBeds = property.bedroomCount === 3;
+    else if (bedrooms === '4+') matchesBeds = property.bedroomCount !== null && property.bedroomCount >= 4;
+
+    if (!matchesQuery || !matchesType || !matchesMuni || !matchesBeds) return false;
     if (!range) return true;
     if (property.priceValue === null) {
       hiddenUnpriced += 1;
