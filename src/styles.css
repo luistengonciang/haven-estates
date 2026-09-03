@@ -1234,12 +1234,29 @@ button {
   width: min(980px, calc(100vw - 32px)) !important;
   padding: 0 !important;
   overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  border-radius: 20px;
+  background: #ffffff;
+  position: relative;
+}
+
+.dialog-sheet-handle {
+  display: none;
+}
+
+.dialog-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
 
 .dialog-split {
   display: grid;
-  grid-template-columns: 1.12fr 1fr;
-  max-height: calc(100vh - 48px);
+  grid-template-columns: 1.15fr 1fr;
+  height: 100%;
 }
 
 .dialog-media-column {
@@ -1253,7 +1270,7 @@ button {
 
 .dialog-hero-photo-wrap {
   position: relative;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   height: min(320px, 42vh);
   background: #0b1811;
@@ -1286,6 +1303,11 @@ button {
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.dialog-thumbs-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .dialog-thumb-btn {
@@ -1355,12 +1377,28 @@ button {
   line-height: 1.45;
 }
 
+.advisor-desktop-only {
+  display: flex;
+}
+
+.advisor-mobile-only {
+  display: none !important;
+}
+
 .dialog-content-column {
-  padding: 36px 30px;
+  padding: 32px 28px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.dialog-meta-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .dialog-type-tag {
@@ -1368,10 +1406,13 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #4a745c;
+  background: #eff6ee;
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 
 .dialog-content-column h2 {
-  font: 700 28px/1.2 'Playfair Display', serif;
+  font: 700 26px/1.2 'Playfair Display', serif;
   margin: 0;
   color: #182a20;
 }
@@ -1389,7 +1430,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
-  margin: 10px 0 4px;
+  margin: 6px 0 2px;
 }
 
 .highlight-item {
@@ -1425,10 +1466,10 @@ button {
 
 .dialog-description-box h4 {
   margin: 0 0 6px;
-  font-size: 12.5px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #3b5746;
+  letter-spacing: 0.06em;
+  color: #32503d;
   font-weight: 700;
 }
 
@@ -1436,15 +1477,20 @@ button {
   margin: 0;
   font-size: 13px;
   line-height: 1.65;
-  color: #475a4e;
+  color: #405447;
 }
 
-.dialog-cta-stack {
-  margin-top: auto;
-  padding-top: 16px;
+.dialog-cta-bar {
+  padding: 18px 28px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid #e7ece5;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .schedule-viewing-btn {
@@ -1455,17 +1501,18 @@ button {
   background: #173c2c;
   color: #ffffff;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px 20px;
   font-size: 13.5px;
   font-weight: 700;
-  transition: background 0.18s;
+  transition: background 0.18s, transform 0.15s;
   cursor: pointer;
   width: 100%;
 }
 
 .schedule-viewing-btn:hover {
   background: #23523d;
+  transform: translateY(-1px);
 }
 
 .source-link {
@@ -1493,54 +1540,102 @@ button {
     max-width: 100% !important;
     height: 94dvh !important;
     max-height: 94dvh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: 24px 24px 0 0 !important;
     display: flex;
     flex-direction: column;
+    margin: 0;
+  }
+  .dialog-sheet-handle {
+    display: block;
+    width: 42px;
+    height: 4px;
+    background: #ccd5cd;
+    border-radius: 99px;
+    margin: 10px auto 4px;
+    flex-shrink: 0;
+  }
+  .dialog-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    z-index: 60;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(15, 33, 23, 0.7);
+    color: #ffffff;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  .dialog-scroll-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
   }
   .dialog-split {
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    height: 100%;
-    max-height: 100%;
-    -webkit-overflow-scrolling: touch;
+    height: auto;
   }
   .dialog-media-column {
-    padding: 20px 16px 14px;
+    padding: 16px 16px 14px;
+    background: #0f2117;
     flex-shrink: 0;
   }
   .dialog-hero-photo-wrap {
     aspect-ratio: 16 / 10;
-    max-height: 260px;
+    max-height: 250px;
   }
   .dialog-hero-photo {
     height: 100%;
     object-fit: cover;
   }
-  .dialog-content-column {
-    padding: 20px 16px 90px;
-    flex: 1;
+  .advisor-desktop-only {
+    display: none !important;
   }
-  .dialog-cta-stack {
-    position: sticky;
-    bottom: 0;
-    margin: 24px -16px -90px;
-    padding: 14px 16px max(16px, env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.96);
+  .advisor-mobile-only {
+    display: flex !important;
+    margin-top: 14px;
+    background: #11241a;
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .dialog-content-column {
+    padding: 20px 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dialog-content-column h2 {
+    font-size: 22px;
+  }
+  .highlights-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .dialog-cta-bar {
+    padding: 12px 18px max(16px, env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.98);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid #e7ece4;
-    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.08);
-    z-index: 25;
+    border-top: 1px solid #e5ebe2;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 20;
   }
   .schedule-viewing-btn {
     width: 100%;
     height: 48px;
     font-size: 14px;
-  }
-  .highlights-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
   }
 }
 

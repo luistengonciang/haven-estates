@@ -98,90 +98,111 @@ function PropertyDialog({ property, onClose, onScheduleViewing }) {
 
   return <div className="property-dialog-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="property-dialog luxury-property-dialog" role="dialog" aria-modal="true" aria-labelledby="property-detail-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button ref={closeRef} className="dialog-close" type="button" onClick={onClose} aria-label="Close property details">×</button>
-      <div className="dialog-split">
-        {/* Left Column: Media Gallery & Advisor Card */}
-        <div className="dialog-media-column">
-          <div className="dialog-hero-photo-wrap">
-            <img
-              src={photos[photoIndex]}
-              alt={`${property.title} — photo ${photoIndex + 1} of ${photos.length}`}
-              className="dialog-hero-photo"
-            />
-            <div className="dialog-photo-badge">
-              <Camera size={13} /> {photoIndex + 1} of {photos.length}
+      <div className="dialog-sheet-handle" aria-hidden="true" />
+      <button ref={closeRef} className="dialog-close" type="button" onClick={onClose} aria-label="Close property details">
+        <X size={20} />
+      </button>
+
+      <div className="dialog-scroll-body">
+        <div className="dialog-split">
+          {/* Left Column: Media Gallery */}
+          <div className="dialog-media-column">
+            <div className="dialog-hero-photo-wrap">
+              <img
+                src={photos[photoIndex]}
+                alt={`${property.title} — photo ${photoIndex + 1} of ${photos.length}`}
+                className="dialog-hero-photo"
+              />
+              <div className="dialog-photo-badge">
+                <Camera size={13} /> {photoIndex + 1} of {photos.length}
+              </div>
+            </div>
+
+            {photos.length > 1 && (
+              <div className="dialog-thumbs-strip">
+                {photos.map((photo, index) => (
+                  <button
+                    key={photo}
+                    type="button"
+                    className={`dialog-thumb-btn ${index === photoIndex ? 'is-current' : ''}`}
+                    aria-label={`Show photo ${index + 1}`}
+                    aria-current={index === photoIndex}
+                    onClick={() => setPhotoIndex(index)}
+                  >
+                    <img src={photo} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Desktop Advisor Card */}
+            <div className="advisor-trust-card advisor-desktop-only">
+              <div className="advisor-avatar"><TreePine size={20} /></div>
+              <div>
+                <strong>Melissa Barlin</strong>
+                <span>Senior Advisor · Bataan Specialist</span>
+                <p>Curated walkthroughs, title checking, and local neighborhood insights.</p>
+              </div>
             </div>
           </div>
 
-          {photos.length > 1 && (
-            <div className="dialog-thumbs-strip">
-              {photos.map((photo, index) => (
-                <button
-                  key={photo}
-                  type="button"
-                  className={`dialog-thumb-btn ${index === photoIndex ? 'is-current' : ''}`}
-                  aria-label={`Show photo ${index + 1}`}
-                  aria-current={index === photoIndex}
-                  onClick={() => setPhotoIndex(index)}
-                >
-                  <img src={photo} alt="" loading="lazy" />
-                </button>
-              ))}
+          {/* Right Column: Information & Actions */}
+          <div className="dialog-content-column">
+            <div className="dialog-meta-top">
+              <div className="dialog-type-tag">{property.type}</div>
+              <p className="dialog-place"><MapPin size={14} /> {property.fullLocation || property.location}</p>
             </div>
-          )}
 
-          <div className="advisor-trust-card">
-            <div className="advisor-avatar"><TreePine size={20} /></div>
-            <div>
-              <strong>Melissa Barlin</strong>
-              <span>Senior Advisor · Bataan Specialist</span>
-              <p>Curated walkthroughs, title checking, and local neighborhood insights.</p>
+            <h2 id="property-detail-title">{property.title}</h2>
+            <p className="property-price">{property.price}</p>
+
+            <div className="highlights-grid">
+              <div className="highlight-item">
+                <span className="hl-label">Bedrooms</span>
+                <strong><BedDouble size={16} /> {property.bedrooms}</strong>
+              </div>
+              <div className="highlight-item">
+                <span className="hl-label">Bathrooms</span>
+                <strong><Bath size={16} /> {property.bathrooms}</strong>
+              </div>
+              <div className="highlight-item">
+                <span className="hl-label">Floor Area</span>
+                <strong><Square size={15} /> {property.floorArea}</strong>
+              </div>
+              <div className="highlight-item">
+                <span className="hl-label">Municipality</span>
+                <strong><MapPin size={15} /> {property.municipality || 'Bataan'}</strong>
+              </div>
+            </div>
+
+            {property.description && (
+              <div className="dialog-description-box">
+                <h4>About this Sanctuary</h4>
+                <p>{property.description}</p>
+              </div>
+            )}
+
+            {/* Mobile Advisor Card (Positioned after description on mobile) */}
+            <div className="advisor-trust-card advisor-mobile-only">
+              <div className="advisor-avatar"><TreePine size={20} /></div>
+              <div>
+                <strong>Melissa Barlin</strong>
+                <span>Senior Advisor · Bataan Specialist</span>
+                <p>Curated walkthroughs, title checking, and local neighborhood insights.</p>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Right Column: Information & Actions */}
-        <div className="dialog-content-column">
-          <div className="dialog-type-tag">{property.type}</div>
-          <h2 id="property-detail-title">{property.title}</h2>
-          <p className="property-price">{property.price}</p>
-          <p className="dialog-place"><MapPin size={15} /> {property.fullLocation || property.location}</p>
-
-          <div className="highlights-grid">
-            <div className="highlight-item">
-              <span className="hl-label">Bedrooms</span>
-              <strong><BedDouble size={16} /> {property.bedrooms}</strong>
-            </div>
-            <div className="highlight-item">
-              <span className="hl-label">Bathrooms</span>
-              <strong><Bath size={16} /> {property.bathrooms}</strong>
-            </div>
-            <div className="highlight-item">
-              <span className="hl-label">Floor Area</span>
-              <strong><Square size={15} /> {property.floorArea}</strong>
-            </div>
-            <div className="highlight-item">
-              <span className="hl-label">Municipality</span>
-              <strong><MapPin size={15} /> {property.municipality || 'Bataan'}</strong>
-            </div>
-          </div>
-
-          {property.description && (
-            <div className="dialog-description-box">
-              <h4>About this Sanctuary</h4>
-              <p>{property.description}</p>
-            </div>
-          )}
-
-          <div className="dialog-cta-stack">
-            <button type="button" className="schedule-viewing-btn" onClick={() => onScheduleViewing(property)}>
-              <CalendarCheck size={16} /> Schedule viewing with Melissa Barlin
-            </button>
-            <a className="source-link" href={property.sourceUrl} target="_blank" rel="noreferrer">
-              View original listing <ExternalLink size={15} />
-            </a>
-          </div>
-        </div>
+      {/* Sticky Bottom Action Bar */}
+      <div className="dialog-cta-bar">
+        <button type="button" className="schedule-viewing-btn" onClick={() => onScheduleViewing(property)}>
+          <CalendarCheck size={16} /> Schedule viewing with Melissa Barlin
+        </button>
+        <a className="source-link" href={property.sourceUrl} target="_blank" rel="noreferrer">
+          View original listing <ExternalLink size={14} />
+        </a>
       </div>
     </section>
   </div>;
