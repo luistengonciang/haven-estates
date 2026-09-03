@@ -135,3 +135,66 @@ export function filterAndSortProperties(properties, { query = '', priceBand = ''
   });
   return { items, hiddenUnpriced };
 }
+
+export async function fetchUserSavedProperties(userId) {
+  if (!supabase || !supabaseConfigReady || !userId) return [];
+  const { data, error } = await supabase
+    .from('saved_properties')
+    .select('property_id')
+    .eq('user_id', userId);
+  if (error) {
+    console.warn('Could not load saved properties:', error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => row.property_id);
+}
+
+export async function savePropertyToCloud(userId, propertyId) {
+  if (!supabase || !supabaseConfigReady || !userId || !propertyId) return;
+  const { error } = await supabase
+    .from('saved_properties')
+    .upsert({ user_id: userId, property_id: propertyId }, { onConflict: 'user_id,property_id' });
+  if (error) console.warn('Could not save property to cloud:', error.message);
+}
+
+export async function removePropertyFromCloud(userId, propertyId) {
+  if (!supabase || !supabaseConfigReady || !userId || !propertyId) return;
+  const { error } = await supabase
+    .from('saved_properties')
+    .delete()
+    .eq('user_id', userId)
+    .eq('property_id', propertyId);
+  if (error) console.warn('Could not remove property from cloud:', error.message);
+}
+
+export async function mergeLocalSavedWithCloud(userId, localIds = []) {
+  if (!supabase || !supabaseConfigReady || !userId) return new Set(localIds);
+  const cloudIds = await fetchUserSavedProperties(userId);
+  const combined = new Set([...cloudIds, ...localIds]);
+
+  const toBackfill = localIds.filter((id) => !cloudIds.includes(id));
+  if (toBackfill.length > 0) {
+    const rows = toBackfill.map((property_id) => ({ user_id: userId, property_id }));
+    const { error } = await supabase
+      .from('saved_properties')
+      .upsert(rows, { onConflict: 'user_id,property_id' });
+    if (error) console.warn('Could not backfill local saved properties:', error.message);
+  }
+
+  return combined;
+}
+
+export async function fetchUserViewingRequests(userId) {
+  if (!supabase || !supabaseConfigReady || !userId) return [];
+  const { data, error } = await supabase
+    .from('viewing_requests')
+    .select('id, property_id, preferred_date, preferred_time, notes, status, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.warn('Could not load viewing requests:', error.message);
+    return [];
+  }
+  return data ?? [];
+}
+

@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bath, BedDouble, Building2, ChevronDown, ExternalLink, Heart, MapPin, Menu, MoveRight, Search, SlidersHorizontal, Sparkles, Square, TreePine, X } from 'lucide-react';
+import { Bath, BedDouble, Building2, CalendarCheck, ChevronDown, Clock, ExternalLink, Heart, MapPin, Menu, MoveRight, Search, SlidersHorizontal, Sparkles, Square, TreePine, X } from 'lucide-react';
 import AgenticChatbot from './AgenticChatbot';
 import RagShowcase from './RagShowcase';
 import { AuthControls, useAuth } from './AuthGate';
-import { BATAAN_MUNICIPALITIES, filterAndSortProperties, getBataanProperties } from './lib/properties';
+import {
+  BATAAN_MUNICIPALITIES,
+  fetchUserViewingRequests,
+  filterAndSortProperties,
+  getBataanProperties,
+  mergeLocalSavedWithCloud,
+  removePropertyFromCloud,
+  savePropertyToCloud,
+} from './lib/properties';
 
 const PAGE_SIZE = 9;
 const SAVED_LISTINGS_KEY = 'haven-saved-bataan-listings';
@@ -16,7 +24,7 @@ function PropertyCard({ property, onSelect, isSaved, onToggleSaved }) {
   </article>;
 }
 
-function PropertyDialog({ property, onClose }) {
+function PropertyDialog({ property, onClose, onScheduleViewing }) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const closeRef = useRef(null);
   const restoreRef = useRef(null);
@@ -52,7 +60,69 @@ function PropertyDialog({ property, onClose }) {
       <p className="property-place"><MapPin size={15} /> {property.fullLocation || property.location}</p>
       <div className="property-specs"><span><BedDouble size={16} /> {property.bedrooms} beds</span><span><Bath size={16} /> {property.bathrooms} baths</span><span><Square size={15} /> {property.floorArea}</span></div>
       {property.description && <p className="dialog-description">{property.description}</p>}
-      <a className="source-link" href={property.sourceUrl} target="_blank" rel="noreferrer">View original listing <ExternalLink size={16} /></a>
+      <div className="dialog-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 20 }}>
+        <button type="button" className="schedule-viewing-btn" onClick={() => onScheduleViewing(property)}>
+          <CalendarCheck size={16} /> Schedule viewing with Melissa Barlin
+        </button>
+        <a className="source-link" href={property.sourceUrl} target="_blank" rel="noreferrer" style={{ marginTop: 0 }}>
+          View original listing <ExternalLink size={16} />
+        </a>
+      </div>
+    </section>
+  </div>;
+}
+
+function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty }) {
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return <div className="property-dialog-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="property-dialog viewing-dialog" role="dialog" aria-modal="true" aria-labelledby="viewings-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button ref={closeRef} className="dialog-close" type="button" onClick={onClose} aria-label="Close viewing appointments">×</button>
+      <div className="eyebrow" style={{ color: '#496252', marginBottom: 8 }}><CalendarCheck size={16} /> Private Appointments</div>
+      <h2 id="viewings-dialog-title" style={{ marginBottom: 18 }}>My Viewing Requests</h2>
+      {requests.length === 0 ? (
+        <div className="property-state" style={{ minHeight: 140 }}>
+          <p>No viewing requests scheduled yet.</p>
+          <small style={{ color: '#738077', marginTop: 6 }}>While browsing any Bataan home, click "Schedule viewing" or ask Vanguard to arrange a walkthrough.</small>
+        </div>
+      ) : (
+        <div className="viewing-list">
+          {requests.map((req) => {
+            const prop = properties.find((p) => p.id === req.property_id);
+            const statusClass = `status-${req.status}`;
+            const statusLabel = req.status === 'confirmed' ? 'Confirmed Appointment' : req.status === 'pending' ? 'Pending Advisor Review' : req.status === 'cancelled' ? 'Cancelled' : 'Declined';
+
+            return (
+              <article key={req.id} className="viewing-card">
+                {prop && prop.image && (
+                  <img src={prop.image} alt="" className="viewing-thumb" loading="lazy" />
+                )}
+                <div className="viewing-details">
+                  <div className="viewing-header">
+                    <span className={`status-pill ${statusClass}`}>{statusLabel}</span>
+                    <span className="viewing-time"><Clock size={13} /> {req.preferred_date}{req.preferred_time ? ` · ${req.preferred_time}` : ''}</span>
+                  </div>
+                  <h4>{prop ? prop.title : 'Bataan Property'}</h4>
+                  {prop && <p className="viewing-location"><MapPin size={13} /> {prop.location} · <strong>{prop.price}</strong></p>}
+                  {req.notes && <p className="viewing-notes">"{req.notes}"</p>}
+                  {prop && (
+                    <button type="button" className="detail-button" style={{ padding: '8px 0 0' }} onClick={() => { onClose(); onSelectProperty(prop); }}>
+                      View property details <MoveRight size={14} />
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   </div>;
 }
@@ -70,6 +140,8 @@ export default function App() {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [showSaved, setShowSaved] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [viewingDrawerOpen, setViewingDrawerOpen] = useState(false);
+  const [viewingRequests, setViewingRequests] = useState([]);
 
   const loadProperties = async () => {
     setLoading(true); setError(null);
@@ -78,10 +150,30 @@ export default function App() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void loadProperties(); }, []);
-  useEffect(() => {
-    try { setSavedIds(new Set(JSON.parse(window.localStorage.getItem(SAVED_LISTINGS_KEY) || '[]'))); } catch { setSavedIds(new Set()); }
+  const loadViewingRequests = useCallback(async (userId) => {
+    if (!userId) { setViewingRequests([]); return; }
+    const data = await fetchUserViewingRequests(userId);
+    setViewingRequests(data);
   }, []);
+
+  useEffect(() => { void loadProperties(); }, []);
+
+  useEffect(() => {
+    let localSaved = [];
+    try { localSaved = JSON.parse(window.localStorage.getItem(SAVED_LISTINGS_KEY) || '[]'); }
+    catch { localSaved = []; }
+
+    if (auth?.user?.id) {
+      void mergeLocalSavedWithCloud(auth.user.id, localSaved).then((mergedSet) => {
+        setSavedIds(mergedSet);
+        window.localStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify([...mergedSet]));
+      });
+      void loadViewingRequests(auth.user.id);
+    } else {
+      setSavedIds(new Set(localSaved));
+      setViewingRequests([]);
+    }
+  }, [auth?.user?.id, loadViewingRequests]);
 
   // The mobile nav is the only navigation under 850px, so it must close on
   // Escape and on any link tap.
@@ -103,9 +195,17 @@ export default function App() {
 
   const toggleSaved = (id) => {
     if (!auth?.requireAuth('Sign in to save listings and pick your search back up on any device.')) return;
+    const userId = auth?.user?.id;
     setSavedIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      const isSaving = !next.has(id);
+      if (isSaving) {
+        next.add(id);
+        if (userId) void savePropertyToCloud(userId, id);
+      } else {
+        next.delete(id);
+        if (userId) void removePropertyFromCloud(userId, id);
+      }
       window.localStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify([...next]));
       return next;
     });
@@ -115,17 +215,39 @@ export default function App() {
   const selectProperty = (property) => { setSelected(property); setActiveListing(property); };
   const closeDialog = useCallback(() => setSelected(null), []);
 
+  const handleScheduleViewing = (property) => {
+    setActiveListing(property);
+    closeDialog();
+    // Open Vanguard chatbot so user can converse with Melissa Barlin / Vanguard
+    const chatFab = document.querySelector('.chat-fab');
+    if (chatFab && !document.querySelector('.chat-window-open')) {
+      chatFab.click();
+    }
+  };
+
   return <main>
     <section className="hero">
       <nav>
         <a className="brand" href="#top"><span>H</span> HAVEN</a>
         <div className="nav-links">{NAV_LINKS.map(([href, label]) => <a key={href} href={href}>{label}</a>)}</div>
         <AuthControls />
+        {auth?.user && (
+          <button type="button" className="nav-viewings-btn" onClick={() => setViewingDrawerOpen(true)} title="My Viewing Requests">
+            <CalendarCheck size={16} />
+            <span>Viewings</span>
+            {viewingRequests.length > 0 && <span className="nav-viewings-badge">{viewingRequests.length}</span>}
+          </button>
+        )}
         <a className="nav-cta" href="#intelligence">Speak with Melissa Barlin <MoveRight size={17} /></a>
         <button className="mobile-menu" type="button" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} aria-controls="mobile-nav" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X size={23} /> : <Menu size={23} />}</button>
       </nav>
       {menuOpen && <div className="mobile-nav" id="mobile-nav">
         {NAV_LINKS.map(([href, label]) => <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}
+        {auth?.user && (
+          <button type="button" className="mobile-nav-link-btn" onClick={() => { setMenuOpen(false); setViewingDrawerOpen(true); }}>
+            <CalendarCheck size={16} /> My Viewing Requests ({viewingRequests.length})
+          </button>
+        )}
         <a className="mobile-nav-cta" href="#intelligence" onClick={() => setMenuOpen(false)}>Speak with Melissa Barlin <MoveRight size={17} /></a>
       </div>}
       <div className="hero-content" id="top"><div className="eyebrow"><Sparkles size={15} /> Curated homes. Human guidance.</div><h1>Find your next <em>sanctuary.</em></h1><p>Discover exceptional homes, thoughtfully matched to the life you want to live.</p><form className="search-panel" onSubmit={submitSearch}><label><Search size={19} /><span>Search<input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} placeholder="Subdivision, beach, or keyword" aria-label="Search Bataan listings" /></span></label><label className="search-filter"><MapPin size={19} /><span>Town<small>{filters.municipality || 'All Bataan'}</small></span><ChevronDown className="select-chevron" size={18} /><select className="filter-select" value={filters.municipality} onChange={(event) => updateFilter('municipality', event.target.value)} aria-label="Town or municipality"><option value="">All Bataan</option>{BATAAN_MUNICIPALITIES.map((town) => <option key={town} value={town}>{town}</option>)}</select></label><label className="search-filter"><span className="search-label-icon">$</span><span>Price range<small>{filters.priceBand === 'under1m' ? 'Under ₱1M' : filters.priceBand === '1m-5m' ? '₱1M–₱5M' : filters.priceBand === '5m-10m' ? '₱5M–₱10M' : filters.priceBand === 'over10m' ? 'Over ₱10M' : 'Any price'}</small></span><ChevronDown className="select-chevron" size={18} /><select className="filter-select" value={filters.priceBand} onChange={(event) => updateFilter('priceBand', event.target.value)} aria-label="Price range"><option value="">Any price</option><option value="under1m">Under ₱1M</option><option value="1m-5m">₱1M–₱5M</option><option value="5m-10m">₱5M–₱10M</option><option value="over10m">Over ₱10M</option></select></label><label className="search-filter"><Building2 size={19} /><span>Property type<small>{filters.propertyType || 'All properties'}</small></span><ChevronDown className="select-chevron" size={18} /><select className="filter-select" value={filters.propertyType} onChange={(event) => updateFilter('propertyType', event.target.value)} aria-label="Property type"><option value="">All properties</option><option>House</option><option>Condo</option><option>Land</option><option>Commercial</option></select></label><button type="submit"><Search size={19} /> Search</button></form></div>
@@ -157,7 +279,8 @@ export default function App() {
       {!loading && !error && visibleProperties.length === 0 && <div className="property-state">{showSaved ? 'You have no saved listings yet. Use the heart on a listing to save it.' : 'No listings match those filters.'} {!showSaved && <button className="clear-search" type="button" onClick={clearSearch}>Clear all filters</button>}</div>}
       {!loading && !error && visibleProperties.length > 0 && <><div className="property-grid">{visibleProperties.map((property) => <PropertyCard property={property} key={property.id} onSelect={selectProperty} isSaved={savedIds.has(property.id)} onToggleSaved={toggleSaved} />)}</div><nav className="pagination" aria-label="Property listing pages"><button type="button" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></nav></>}
     </section>
-    {selected && <PropertyDialog property={selected} onClose={closeDialog} />}
+    {selected && <PropertyDialog property={selected} onClose={closeDialog} onScheduleViewing={handleScheduleViewing} />}
+    {viewingDrawerOpen && <ViewingRequestsModal requests={viewingRequests} properties={properties} onClose={() => setViewingDrawerOpen(false)} onSelectProperty={selectProperty} />}
     <RagShowcase />
     <section className="advisor-banner" id="advisors"><div className="banner-mark"><TreePine size={34} /></div><div><p className="section-kicker">A better way home</p><h2>Expert advice, on your terms.</h2><p>From the first search to the final signature, our local advisors pair intelligence with an exceptionally personal experience.</p></div><a href="#intelligence">Explore the intelligence <MoveRight size={18} /></a></section>
     <section className="our-story" id="about"><div><p className="section-kicker">Our story</p><h2>Built with curiosity, data, and a local point of view.</h2></div><div className="story-copy"><p>Haven is shaped by Luis Tengonciang, an Applied Mathematics and Data Science student at Ateneo de Manila University. The project brings together thoughtful design, practical data work, and a belief that property discovery should feel more transparent and personal.</p><p>Starting with Bataan, Haven turns scattered listing information into a clearer place to search, compare, and ask better questions before making a decision.</p></div></section><button className="filter-chip" type="button" onClick={() => document.querySelector('#top input')?.focus()}><SlidersHorizontal size={18} /> Refine your search</button><AgenticChatbot activeListing={activeListing} />
