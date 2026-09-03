@@ -66,37 +66,159 @@ function AuthPanel({ reason, onClose }) {
     setIsSubmitting(false);
   }
 
-  return <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-[2rem] bg-stone-50 shadow-2xl shadow-black/30 lg:grid-cols-[1.08fr_0.92fr]">
-    <section className="relative hidden overflow-hidden bg-[#173f3b] p-12 text-stone-50 lg:flex lg:flex-col lg:justify-between">
-      <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-amber-300/15 blur-3xl" />
-      <span className="relative text-lg font-semibold tracking-[0.25em]"><span className="mr-2 inline-grid h-8 w-8 place-items-center rounded-full bg-amber-300 font-serif text-xl tracking-normal text-[#173f3b]">H</span>HAVEN</span>
-      <div className="relative max-w-md">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">A calmer way to find home</p>
-        <h2 className="font-serif text-5xl leading-[1.05]">Your search, with an advisor who remembers.</h2>
-        <p className="mt-6 max-w-sm text-base leading-7 text-stone-200">Create an account to save listings, ask Vanguard questions grounded in our local market knowledge, and request viewings.</p>
+  return <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] bg-white shadow-2xl shadow-black/40 lg:grid-cols-[1.05fr_0.95fr]">
+    {/* Left Editorial Branding Banner */}
+    <section className="relative hidden overflow-hidden bg-[#122a1f] p-12 text-stone-50 lg:flex lg:flex-col lg:justify-between">
+      <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-[#beef68]/10 blur-3xl" />
+      <div className="absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-[#beef68]/5 blur-3xl" />
+      
+      <span className="relative flex items-center gap-2 font-mono text-base font-semibold tracking-[0.2em] text-white">
+        <span className="inline-grid h-8 w-8 place-items-center rounded-full bg-[#beef68] font-serif text-xl font-bold tracking-normal text-[#122a1f]">H</span>
+        HAVEN ESTATES
+      </span>
+
+      <div className="relative max-w-md my-auto">
+        <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[#beef68]">Exclusive Member Privileges</p>
+        <h2 className="font-['Playfair_Display'] text-4xl font-bold leading-[1.12] text-white">Find your sanctuary with intelligence on your side.</h2>
+        <div className="mt-8 space-y-4 text-sm text-stone-200">
+          <div className="flex items-start gap-3">
+            <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#beef68]/20 text-[#beef68] text-xs font-bold">✓</span>
+            <p className="leading-relaxed"><strong className="text-white">Cloud Wishlist Sync:</strong> Save and organize properties across devices with a single tap.</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#beef68]/20 text-[#beef68] text-xs font-bold">✓</span>
+            <p className="leading-relaxed"><strong className="text-white">Vanguard AI Advisor:</strong> Access deep real estate retrieval on pricing, zoning, and legal tips.</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#beef68]/20 text-[#beef68] text-xs font-bold">✓</span>
+            <p className="leading-relaxed"><strong className="text-white">Priority Viewings:</strong> Schedule private in-person walkthroughs with Melissa Barlin.</p>
+          </div>
+        </div>
       </div>
-      <div className="relative flex items-center gap-3 text-sm text-stone-200"><ShieldCheck className="text-amber-200" size={22} /><span>Private account access with Supabase Auth</span></div>
+
+      <div className="relative flex items-center gap-3 font-mono text-xs text-stone-300">
+        <ShieldCheck className="text-[#beef68]" size={20} />
+        <span>Secured via Supabase Enterprise Auth</span>
+      </div>
     </section>
 
-    <section className="relative flex items-center p-6 sm:p-10 lg:p-12">
-      <button type="button" onClick={onClose} aria-label="Close sign in" className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-stone-500 transition hover:bg-stone-200 hover:text-stone-800"><X size={20} /></button>
-      <div className="mx-auto w-full max-w-md">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-teal-700">Member access</p>
-          <h3 id="auth-dialog-title" className="mt-3 font-serif text-4xl tracking-tight text-stone-900">{isSignUp ? 'Create your account' : 'Welcome back'}</h3>
-          <p className="mt-3 text-sm leading-6 text-stone-600">{reason || (isSignUp ? 'Save your preferences and access the Haven intelligence desk.' : 'Sign in to continue your home search.')}</p>
+    {/* Right Form Panel */}
+    <section className="relative flex items-center p-8 sm:p-12">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close sign in"
+        className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-stone-800"
+      >
+        <X size={20} />
+      </button>
+
+      <div className="mx-auto w-full max-w-sm">
+        <div className="mb-7">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[#285740]">Member Sanctuary</p>
+          <h3 id="auth-dialog-title" className="mt-2 font-['Playfair_Display'] text-3xl font-bold tracking-tight text-[#16291f]">
+            {isSignUp ? 'Create your Haven account' : 'Welcome back to Haven'}
+          </h3>
+          <p className="mt-2 text-xs leading-relaxed text-stone-500">
+            {reason || (isSignUp ? 'Join to save listings and access the Vanguard intelligence engine.' : 'Sign in to access your saved homes and scheduled viewings.')}
+          </p>
         </div>
-        <div className="mb-7 grid grid-cols-2 rounded-xl bg-stone-100 p-1 text-sm font-semibold"><button type="button" onClick={() => switchMode('signIn')} className={`rounded-lg px-3 py-2.5 transition ${!isSignUp ? 'bg-white text-[#173f3b] shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>Sign in</button><button type="button" onClick={() => switchMode('signUp')} className={`rounded-lg px-3 py-2.5 transition ${isSignUp ? 'bg-white text-[#173f3b] shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>Create account</button></div>
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          {isSignUp && <label className="block text-sm font-medium text-stone-700">Name<input value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength="80" autoComplete="name" placeholder="How should we address you?" className="mt-2 block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none transition placeholder:text-stone-400 focus:border-teal-700 focus:ring-4 focus:ring-teal-700/10" /></label>}
-          <label className="block text-sm font-medium text-stone-700">Email address<div className="relative mt-2"><Mail className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} /><input ref={emailRef} value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required placeholder="you@example.com" className="block w-full rounded-xl border border-stone-300 bg-white py-3 pl-11 pr-4 text-base outline-none transition placeholder:text-stone-400 focus:border-teal-700 focus:ring-4 focus:ring-teal-700/10" /></div></label>
-          <label className="block text-sm font-medium text-stone-700">Password<div className="relative mt-2"><LockKeyhole className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} /><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={isSignUp ? 'new-password' : 'current-password'} required minLength="8" placeholder={isSignUp ? 'At least 8 characters' : 'Your password'} className="block w-full rounded-xl border border-stone-300 bg-white py-3 pl-11 pr-4 text-base outline-none transition placeholder:text-stone-400 focus:border-teal-700 focus:ring-4 focus:ring-teal-700/10" /></div></label>
-          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">{error}</p>}
-          {status && <p role="status" className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-5 text-emerald-800"><CheckCircle2 className="mt-0.5 shrink-0" size={17} />{status}</p>}
-          <button disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#173f3b] px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-[#0e302c] focus:outline-none focus:ring-4 focus:ring-teal-700/25 disabled:cursor-not-allowed disabled:opacity-70">{isSubmitting ? <LoaderCircle className="animate-spin" size={18} /> : <KeyRound size={18} />}{isSubmitting ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign in'}{!isSubmitting && <ArrowRight size={17} />}</button>
+
+        {/* High-Contrast Segmented Switcher */}
+        <div className="mb-6 grid grid-cols-2 rounded-xl bg-stone-100 p-1 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => switchMode('signIn')}
+            className={`rounded-lg py-2.5 transition ${!isSignUp ? 'bg-white text-[#122a1f] shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode('signUp')}
+            className={`rounded-lg py-2.5 transition ${isSignUp ? 'bg-white text-[#122a1f] shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
+          >
+            Create account
+          </button>
+        </div>
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          {isSignUp && (
+            <label className="block text-xs font-bold uppercase tracking-wider text-stone-600">
+              Your Name
+              <input
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                maxLength="80"
+                autoComplete="name"
+                placeholder="e.g. Maria Santos"
+                className="mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50/60 px-3.5 py-2.5 text-sm font-medium text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-[#173c2c] focus:bg-white focus:ring-4 focus:ring-[#173c2c]/10"
+              />
+            </label>
+          )}
+
+          <label className="block text-xs font-bold uppercase tracking-wider text-stone-600">
+            Email address
+            <div className="relative mt-1.5">
+              <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+              <input
+                ref={emailRef}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@example.com"
+                className="block w-full rounded-xl border border-stone-200 bg-stone-50/60 py-2.5 pl-10 pr-3.5 text-sm font-medium text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-[#173c2c] focus:bg-white focus:ring-4 focus:ring-[#173c2c]/10"
+              />
+            </div>
+          </label>
+
+          <label className="block text-xs font-bold uppercase tracking-wider text-stone-600">
+            Password
+            <div className="relative mt-1.5">
+              <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                required
+                minLength="8"
+                placeholder={isSignUp ? 'At least 8 characters' : 'Your password'}
+                className="block w-full rounded-xl border border-stone-200 bg-stone-50/60 py-2.5 pl-10 pr-3.5 text-sm font-medium text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-[#173c2c] focus:bg-white focus:ring-4 focus:ring-[#173c2c]/10"
+              />
+            </div>
+          </label>
+
+          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700">{error}</p>}
+          {status && <p role="status" className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800"><CheckCircle2 className="mt-0.5 shrink-0" size={15} />{status}</p>}
+
+          <button
+            disabled={isSubmitting}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#173c2c] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#21523c] focus:outline-none focus:ring-4 focus:ring-[#173c2c]/20 disabled:cursor-not-allowed disabled:opacity-70 mt-2"
+          >
+            {isSubmitting ? <LoaderCircle className="animate-spin" size={17} /> : <KeyRound size={17} />}
+            {isSubmitting ? 'Please wait…' : isSignUp ? 'Create Haven Account' : 'Sign In to Haven'}
+            {!isSubmitting && <ArrowRight size={16} />}
+          </button>
         </form>
-        <p className="mt-7 text-center text-sm text-stone-600">{isSignUp ? 'Already have an account?' : 'New to Haven?'} <button type="button" onClick={() => switchMode(isSignUp ? 'signIn' : 'signUp')} className="font-semibold text-teal-800 underline decoration-teal-800/30 underline-offset-4 hover:text-teal-950">{isSignUp ? 'Sign in' : 'Create an account'}</button></p>
-        <p className="mt-4 text-center text-xs text-stone-500"><button type="button" onClick={onClose} className="underline underline-offset-4 hover:text-stone-700">Keep browsing without an account</button></p>
+
+        <p className="mt-6 text-center text-xs text-stone-500">
+          {isSignUp ? 'Already have an account?' : 'New to Haven?'}{' '}
+          <button
+            type="button"
+            onClick={() => switchMode(isSignUp ? 'signIn' : 'signUp')}
+            className="font-bold text-[#173c2c] underline underline-offset-4 hover:text-[#285740]"
+          >
+            {isSignUp ? 'Sign in' : 'Create an account'}
+          </button>
+        </p>
+        <p className="mt-3 text-center text-[11px] text-stone-400">
+          <button type="button" onClick={onClose} className="hover:text-stone-600 hover:underline">
+            Keep browsing freely without an account
+          </button>
+        </p>
       </div>
     </section>
   </div>;
@@ -111,12 +233,42 @@ export function AuthControls() {
   if (!auth) return null;
 
   if (!auth.user) {
-    return <button type="button" onClick={() => auth.requireAuth()} className="inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"><UserRound size={17} /> Sign in</button>;
+    return (
+      <button
+        type="button"
+        onClick={() => auth.requireAuth()}
+        className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white hover:text-[#122a1f]"
+      >
+        <UserRound size={15} /> Sign in
+      </button>
+    );
   }
 
   const name = auth.user.user_metadata?.full_name || auth.user.email?.split('@')[0] || 'Account';
 
-  return <><button type="button" onClick={auth.signOut} className="hidden items-center gap-2 text-sm font-semibold text-white/90 transition hover:text-amber-200 md:inline-flex" title={`Signed in as ${auth.user.email}`}><UserRound size={17} /><span className="max-w-28 truncate">{name}</span><LogOut size={16} aria-label="Sign out" /></button><button type="button" onClick={auth.signOut} className="grid h-9 w-9 place-items-center rounded-full border border-white/30 text-white transition hover:bg-white/10 md:hidden" aria-label="Sign out" title={`Signed in as ${auth.user.email}`}><LogOut size={17} /></button></>;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={auth.signOut}
+        className="hidden items-center gap-2 text-xs font-semibold text-white/90 transition hover:text-[#beef68] md:inline-flex bg-white/10 border border-white/20 rounded-full px-3 py-1.5"
+        title={`Signed in as ${auth.user.email}. Click to sign out.`}
+      >
+        <span className="h-2 w-2 rounded-full bg-[#beef68] shadow-[0_0_8px_#beef68]" />
+        <span className="max-w-28 truncate">{name}</span>
+        <LogOut size={14} className="text-white/60 hover:text-white" aria-label="Sign out" />
+      </button>
+      <button
+        type="button"
+        onClick={auth.signOut}
+        className="grid h-8 w-8 place-items-center rounded-full border border-white/25 text-white transition hover:bg-white/10 md:hidden"
+        aria-label="Sign out"
+        title={`Signed in as ${auth.user.email}`}
+      >
+        <LogOut size={15} />
+      </button>
+    </>
+  );
 }
 
 export default function AuthGate({ children }) {
