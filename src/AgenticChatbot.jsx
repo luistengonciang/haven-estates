@@ -13,12 +13,13 @@ import {
 } from 'lucide-react';
 import AIMessageBubble from './chat/AIMessageBubble';
 import MarkdownMessage from './chat/MarkdownMessage';
+import { useAuth } from './AuthGate';
 import { supabase, supabaseConfigReady } from './lib/supabase';
 
 const quickPrompts = [
-  'Analyze market trends',
-  'Calculate max budget',
-  'Find 3-bed homes near me',
+  'What are homes going for in Morong?',
+  'Compare house and condo prices in Bataan',
+  'What should I check before buying here?',
 ];
 
 const statusSteps = [
@@ -69,6 +70,7 @@ async function fetchAIResponse(history, approvedAction = null, activeListing = n
 }
 
 export default function AgenticChatbot({ activeListing = null }) {
+  const auth = useAuth();
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [input, setInput] = useState('');
@@ -82,6 +84,7 @@ export default function AgenticChatbot({ activeListing = null }) {
   const [status, setStatus] = useState(statusSteps[0]);
   const [errorState, setErrorState] = useState(null);
   const endRef = useRef(null);
+  const inputRef = useRef(null);
   const timers = useRef([]);
 
   useEffect(() => {
@@ -91,6 +94,21 @@ export default function AgenticChatbot({ activeListing = null }) {
   useEffect(() => () => {
     timers.current.forEach(clearTimeout);
   }, []);
+
+  // Move focus into the panel on open so keyboard users are not left behind on
+  // the launcher, and let Escape close it like any other overlay.
+  useEffect(() => {
+    if (!open) return undefined;
+    inputRef.current?.focus();
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !fullscreen) setOpen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, fullscreen]);
+
+  const openChat = () => {
+    if (!auth?.requireAuth('Sign in to ask Vanguard about these listings.')) return;
+    setOpen(true);
+  };
 
   const sendMessage = async (value = input) => {
     const message = value.trim();
@@ -113,12 +131,13 @@ export default function AgenticChatbot({ activeListing = null }) {
       const response = await fetchAIResponse(history);
       setMessages((items) => [...items, { role: 'assistant', ...response }]);
     } catch (error) {
+      // Keep operator detail in the console; visitors get something actionable.
+      if (error.message === 'MISSING_SUPABASE') console.error('Vanguard: Supabase env vars missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then restart Vite.');
+      else console.error('Vanguard request failed:', error);
       setErrorState(
-        error.message === 'MISSING_SUPABASE'
-          ? 'Vanguard is not configured yet. Add the Supabase publishable settings and restart Vite.'
-          : error.message === 'RETRIEVAL_UNAVAILABLE'
-          ? 'Vanguard could not retrieve its reference data right now. Please try again shortly.'
-          : 'Vanguard could not connect right now. Check the Supabase Edge Function secrets, deployment, and network connection.',
+        error.message === 'RETRIEVAL_UNAVAILABLE'
+          ? 'Vanguard could not reach its reference data just now. Try again in a moment.'
+          : 'Vanguard is unavailable right now. Please try again in a moment — your listings and search still work.',
       );
     } finally {
       setThinking(false);
@@ -158,7 +177,7 @@ export default function AgenticChatbot({ activeListing = null }) {
 
   return (
     <div className="chatbot">
-      <div className={`chat-window ${open ? 'chat-window-open' : ''} ${fullscreen ? 'chat-window-fullscreen' : ''}`} aria-hidden={!open}>
+      <div className={`chat-window ${open ? 'chat-window-open' : ''} ${fullscreen ? 'chat-window-fullscreen' : ''}`} role="dialog" aria-label="Vanguard AI advisor" inert={!open}>
         <header className="chat-header">
           <div className="agent-avatar"><Bot size={20} /></div>
           <div>
@@ -232,12 +251,14 @@ export default function AgenticChatbot({ activeListing = null }) {
           </div>
 
           <form onSubmit={(event) => { event.preventDefault(); sendMessage(); }}>
+            {/* Deliberately editable while a reply is in flight — people compose
+                their next question as they read. Only sending is blocked. */}
             <input
+              ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="Ask Vanguard anything..."
               aria-label="Message Vanguard"
-              disabled={thinking}
             />
             <button
               type="submit"
@@ -253,8 +274,9 @@ export default function AgenticChatbot({ activeListing = null }) {
 
       <button
         className="chat-fab"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? setOpen(false) : openChat())}
         aria-label={open ? 'Close advisor chat' : 'Open advisor chat'}
+        aria-expanded={open}
       >
         {open ? <X size={24} /> : <><MessageCircle size={23} /><span>Ask Vanguard</span></>}
       </button>

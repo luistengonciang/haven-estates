@@ -22,7 +22,7 @@ function propertyTypeFrom(row) {
   return 'Property';
 }
 
-function listingImageFrom(row) {
+function fallbackImageFrom(row) {
   const images = {
     Condo: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1100&q=85',
     House: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1100&q=85',
@@ -34,6 +34,10 @@ function listingImageFrom(row) {
 }
 
 export function mapBataanProperty(row) {
+  // Real listing photos when the scrape captured them; the type-keyed stock image
+  // is only a placeholder for rows scraped before image_urls existed.
+  const photos = Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [];
+
   return {
     id: row.id,
     title: compactText(row.title, 'Property listing'),
@@ -41,14 +45,19 @@ export function mapBataanProperty(row) {
     priceValue: numberFromText(row.price),
     location: compactText(row.location),
     fullLocation: String(row.location ?? '').replace(/\s+/g, ' ').trim(),
+    description: String(row.description ?? '').replace(/\s+/g, ' ').trim() || null,
     bedrooms: row.bedrooms || '—',
     bathrooms: row.bathrooms || '—',
     floorArea: row.floor_area || '—',
     type: propertyTypeFrom(row),
-    image: listingImageFrom(row),
+    photos,
+    image: photos[0] || fallbackImageFrom(row),
+    hasRealPhoto: photos.length > 0,
     sourceUrl: row.source_url,
     scrapedAt: row.scraped_at,
-    searchableText: `${row.title ?? ''} ${row.location ?? ''} ${row.source_url ?? ''}`.toLowerCase(),
+    // source_url is deliberately excluded: every row shares the same host, so
+    // including it made queries like "com" or "dotproperty" match everything.
+    searchableText: `${row.title ?? ''} ${row.location ?? ''}`.toLowerCase(),
   };
 }
 
@@ -57,27 +66,40 @@ export async function getBataanProperties() {
   if (!supabase || !supabaseConfigReady) throw new Error('SUPABASE_NOT_CONFIGURED');
   const { data, error } = await supabase
     .from(LISTINGS_TABLE)
-    .select('id, title, price, location, bedrooms, bathrooms, floor_area, source_url, scraped_at')
+    .select('id, title, price, location, description, bedrooms, bathrooms, floor_area, image_urls, source_url, scraped_at')
     .order('scraped_at', { ascending: false, nullsFirst: false })
     .range(0, 999);
   if (error) throw error;
   return (data ?? []).map(mapBataanProperty);
 }
 
+/**
+ * Applies the search filters and sort.
+ * Returns the matches plus how many listings a price band excluded purely for
+ * having no parseable price, so the UI can explain their absence instead of
+ * dropping them silently.
+ */
 export function filterAndSortProperties(properties, { query, priceBand, propertyType, sort }) {
   const normalizedQuery = query.trim().toLowerCase();
   const priceBands = { under1m: [0, 1_000_000], '1m-5m': [1_000_000, 5_000_000], '5m-10m': [5_000_000, 10_000_000], over10m: [10_000_000, Infinity] };
   const range = priceBands[priceBand];
+  let hiddenUnpriced = 0;
   const filtered = properties.filter((property) => {
     const matchesQuery = !normalizedQuery || property.searchableText.includes(normalizedQuery);
     const matchesType = !propertyType || property.type === propertyType;
-    const matchesPrice = !range || (property.priceValue !== null && property.priceValue >= range[0] && property.priceValue < range[1]);
-    return matchesQuery && matchesType && matchesPrice;
+    if (!matchesQuery || !matchesType) return false;
+    if (!range) return true;
+    if (property.priceValue === null) {
+      hiddenUnpriced += 1;
+      return false;
+    }
+    return property.priceValue >= range[0] && property.priceValue < range[1];
   });
-  return [...filtered].sort((a, b) => {
+  const items = [...filtered].sort((a, b) => {
     if (sort === 'price-asc') return (a.priceValue ?? Infinity) - (b.priceValue ?? Infinity);
     if (sort === 'price-desc') return (b.priceValue ?? -Infinity) - (a.priceValue ?? -Infinity);
     if (sort === 'title') return a.title.localeCompare(b.title);
     return new Date(b.scrapedAt ?? 0) - new Date(a.scrapedAt ?? 0);
   });
+  return { items, hiddenUnpriced };
 }
