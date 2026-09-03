@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bath, BedDouble, Building2, CalendarCheck, Camera, Check, ChevronDown, Clock, ExternalLink, Heart, MapPin, Menu, MoveRight, Pencil, RotateCcw, Search, SlidersHorizontal, Sparkles, Square, Trash2, TreePine, UserCheck, X, XCircle } from 'lucide-react';
+import { Bath, BedDouble, Building2, CalendarCheck, Camera, Check, ChevronDown, Clock, ExternalLink, Heart, MapPin, Menu, MoveRight, Pencil, RotateCcw, Search, SlidersHorizontal, Sparkles, Square, Trash2, TreePine, UserCheck, UserRound, X, XCircle } from 'lucide-react';
 import AgenticChatbot from './AgenticChatbot';
 import RagShowcase from './RagShowcase';
 import { AuthControls, useAuth } from './AuthGate';
@@ -529,9 +529,13 @@ export default function App() {
       </div>
       {menuOpen && <div className="mobile-nav" id="mobile-nav">
         {NAV_LINKS.map(([href, label]) => <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}
-        {auth?.user && (
+        {auth?.user ? (
           <button type="button" className="mobile-nav-link-btn" onClick={() => { setMenuOpen(false); setViewingDrawerOpen(true); }}>
             <CalendarCheck size={16} /> My Viewing Requests ({viewingRequests.length})
+          </button>
+        ) : (
+          <button type="button" className="mobile-nav-link-btn" onClick={() => { setMenuOpen(false); auth?.requireAuth('Sign in to view and save your luxury sanctuaries.'); }}>
+            <UserRound size={16} /> Member Sign In / Register
           </button>
         )}
         <a className="mobile-nav-cta" href="#intelligence" onClick={() => setMenuOpen(false)}>Speak with Melissa Barlin <MoveRight size={17} /></a>
