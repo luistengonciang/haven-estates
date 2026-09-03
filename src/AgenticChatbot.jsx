@@ -233,10 +233,10 @@ export default function AgenticChatbot({ activeListing = null, initialDraft = ''
             <strong>Vanguard AI Advisor</strong>
             <span><i /> Online · {model}</span>
           </div>
-          <button className="icon-button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Exit full screen' : 'Enter full screen'}>
+          <button className="icon-button header-fullscreen-btn" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? 'Exit full screen' : 'Enter full screen'}>
             {fullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
           </button>
-          <button className="icon-button" onClick={() => handleOpen(false)} aria-label="Close chat">
+          <button className="icon-button header-close-btn" onClick={() => handleOpen(false)} aria-label="Close chat">
             <X size={20} />
           </button>
         </header>
@@ -259,12 +259,12 @@ export default function AgenticChatbot({ activeListing = null, initialDraft = ''
                   </div>
                 )}
                 {message.pendingAction && (
-                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-950">
                     <div className="flex items-center gap-2 font-semibold"><CheckCircle2 size={15} /> Viewing request</div>
                     <p className="mt-2 leading-5">Preferred date: <strong>{message.pendingAction.arguments?.preferred_date || 'Not specified'}</strong>{message.pendingAction.arguments?.preferred_time ? ` at ${message.pendingAction.arguments.preferred_time}` : ''}</p>
                     <div className="mt-3 flex gap-2">
-                      <button type="button" className="rounded-lg bg-emerald-800 px-3 py-2 font-semibold text-white disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => approveAction(index, message.pendingAction)}>{message.actionState === 'approving' ? 'Submitting...' : 'Confirm request'}</button>
-                      <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 font-semibold text-emerald-900 disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => cancelAction(index)}>Cancel</button>
+                      <button type="button" className="chat-action-btn chat-action-confirm rounded-lg bg-emerald-800 px-3.5 py-2.5 font-semibold text-white disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => approveAction(index, message.pendingAction)}>{message.actionState === 'approving' ? 'Submitting...' : 'Confirm request'}</button>
+                      <button type="button" className="chat-action-btn chat-action-cancel rounded-lg border border-emerald-300 bg-white px-3.5 py-2.5 font-semibold text-emerald-900 disabled:opacity-50" disabled={thinking || message.actionState === 'approving'} onClick={() => cancelAction(index)}>Cancel</button>
                     </div>
                   </div>
                 )}
@@ -325,12 +325,18 @@ export default function AgenticChatbot({ activeListing = null, initialDraft = ''
       </div>
 
       <button
-        className="chat-fab"
+        className={`chat-fab ${open ? 'chat-fab-open' : ''}`}
         onClick={() => (open ? handleOpen(false) : openChat())}
         aria-label={open ? 'Close advisor chat' : 'Open advisor chat'}
         aria-expanded={open}
       >
-        {open ? <X size={24} /> : <><MessageCircle size={23} /><span>Ask Vanguard</span></>}
+        {open ? <X size={22} /> : (
+          <>
+            <MessageCircle size={22} />
+            <span className="chat-fab-label">Ask Vanguard</span>
+            <span className="chat-fab-dot" />
+          </>
+        )}
       </button>
     </div>
   );

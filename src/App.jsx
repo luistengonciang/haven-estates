@@ -264,39 +264,63 @@ function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty,
 
   return <div className="property-dialog-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="property-dialog viewing-dialog" role="dialog" aria-modal="true" aria-labelledby="viewings-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button ref={closeRef} className="dialog-close" type="button" onClick={onClose} aria-label="Close viewing appointments">×</button>
-      <div className="eyebrow" style={{ color: '#496252', marginBottom: 8 }}><CalendarCheck size={16} /> Private Appointments</div>
-      <h2 id="viewings-dialog-title" style={{ marginBottom: 6 }}>My Viewing Requests</h2>
-      <p style={{ margin: '0 0 18px', color: '#687b70', fontSize: 13 }}>Manage or adjust your scheduled property walkthroughs with Melissa Barlin and local advisors.</p>
-
-      {actionMessage && <div className="viewing-alert-banner">{actionMessage}</div>}
-
-      {requests.length === 0 ? (
-        <div className="property-state" style={{ minHeight: 140 }}>
-          <p>No viewing requests scheduled yet.</p>
-          <small style={{ color: '#738077', marginTop: 6 }}>While browsing any Bataan home, click "Schedule viewing" or ask Vanguard to arrange a walkthrough.</small>
+      <div className="viewing-sheet-handle" aria-hidden="true" />
+      <header className="viewing-dialog-header">
+        <div className="viewing-header-meta">
+          <div className="eyebrow" style={{ color: '#496252', marginBottom: 4 }}><CalendarCheck size={15} /> Private Appointments</div>
+          <div className="viewing-title-row">
+            <h2 id="viewings-dialog-title">My Viewing Requests</h2>
+            {requests.length > 0 && <span className="viewing-count-badge">{requests.length}</span>}
+          </div>
+          <p className="viewing-subtitle">Manage or adjust your scheduled property walkthroughs with Melissa Barlin and local advisors.</p>
         </div>
-      ) : (
-        <div className="viewing-list">
-          {requests.map((req) => {
-            const prop = properties.find((p) => p.id === req.property_id);
-            const isEditing = editingId === req.id;
-            const isBusy = busyId === req.id;
-            const statusClass = `status-${req.status}`;
-            const statusLabel = req.status === 'confirmed' ? 'Confirmed Appointment' : req.status === 'pending' ? 'Pending Advisor Review' : req.status === 'cancelled' ? 'Cancelled' : 'Declined';
+        <button ref={closeRef} className="dialog-close viewing-close-btn" type="button" onClick={onClose} aria-label="Close viewing appointments">×</button>
+      </header>
 
-            return (
-              <article key={req.id} className="viewing-card">
-                {prop && prop.image && (
-                  <img src={prop.image} alt="" className="viewing-thumb" loading="lazy" />
-                )}
-                <div className="viewing-details">
-                  <div className="viewing-header">
+      <div className="viewing-dialog-body">
+        {actionMessage && <div className="viewing-alert-banner">{actionMessage}</div>}
+
+        {requests.length === 0 ? (
+          <div className="viewings-empty-state">
+            <div className="empty-icon-circle"><CalendarCheck size={28} /></div>
+            <h3>No Appointments Scheduled Yet</h3>
+            <p>While exploring any Bataan sanctuary, click "Schedule viewing" or ask Vanguard to arrange a walkthrough.</p>
+            <button
+              type="button"
+              className="viewings-explore-btn"
+              onClick={() => {
+                onClose();
+                document.getElementById('properties')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              Browse 780+ Bataan Homes
+            </button>
+          </div>
+        ) : (
+          <div className="viewing-list">
+            {requests.map((req) => {
+              const prop = properties.find((p) => p.id === req.property_id);
+              const isEditing = editingId === req.id;
+              const isBusy = busyId === req.id;
+              const statusClass = `status-${req.status}`;
+              const statusLabel = req.status === 'confirmed' ? 'Confirmed Appointment' : req.status === 'pending' ? 'Pending Advisor Review' : req.status === 'cancelled' ? 'Cancelled' : 'Declined';
+
+              return (
+                <article key={req.id} className="viewing-card">
+                  <div className="viewing-card-meta-bar">
                     <span className={`status-pill ${statusClass}`}>{statusLabel}</span>
                     <span className="viewing-time"><Clock size={13} /> {req.preferred_date}{req.preferred_time ? ` · ${req.preferred_time}` : ''}</span>
                   </div>
-                  <h4>{prop ? prop.title : 'Bataan Property'}</h4>
-                  {prop && <p className="viewing-location"><MapPin size={13} /> {prop.location} · <strong>{prop.price}</strong></p>}
+
+                  <div className="viewing-card-main">
+                    {prop && prop.image && (
+                      <img src={prop.image} alt="" className="viewing-thumb" loading="lazy" />
+                    )}
+                    <div className="viewing-details">
+                      <h4>{prop ? prop.title : 'Bataan Property'}</h4>
+                      {prop && <p className="viewing-location"><MapPin size={13} /> {prop.location} · <strong>{prop.price}</strong></p>}
+                    </div>
+                  </div>
 
                   {isEditing ? (
                     <form className="viewing-edit-form" onSubmit={(e) => { e.preventDefault(); handleSaveEdit(req.id); }}>
@@ -322,7 +346,7 @@ function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty,
                           </select>
                         </label>
                       </div>
-                      <label style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+                      <label className="edit-notes-label">
                         <span>Notes or Special Requests:</span>
                         <textarea
                           rows={2}
@@ -390,22 +414,21 @@ function ViewingRequestsModal({ requests, properties, onClose, onSelectProperty,
                         {prop && (
                           <button
                             type="button"
-                            className="detail-button"
-                            style={{ padding: '0', marginLeft: 'auto' }}
+                            className="viewing-action-btn view-prop-action"
                             onClick={() => { onClose(); onSelectProperty(prop); }}
                           >
-                            View listing <MoveRight size={14} />
+                            View listing <MoveRight size={13} />
                           </button>
                         )}
                       </div>
                     </>
                   )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </section>
   </div>;
 }
