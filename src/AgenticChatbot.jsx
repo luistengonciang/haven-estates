@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUp,
@@ -122,15 +122,37 @@ export default function AgenticChatbot({ activeListing = null, initialDraft = ''
     timers.current.forEach(clearTimeout);
   }, []);
 
+  const adjustTextareaHeight = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 115; // approx 4-5 lines of text
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${Math.max(38, nextHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [input, adjustTextareaHeight]);
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  };
+
   // Move focus into the panel on open so keyboard users are not left behind on
   // the launcher, and let Escape close it like any other overlay.
   useEffect(() => {
     if (!open) return undefined;
     inputRef.current?.focus();
+    adjustTextareaHeight();
     const onKeyDown = (event) => { if (event.key === 'Escape' && !fullscreen) handleOpen(false); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, fullscreen]);
+  }, [open, fullscreen, adjustTextareaHeight]);
 
   const openChat = () => {
     if (!auth?.requireAuth('Sign in to ask Vanguard about these listings.')) return;
@@ -280,12 +302,15 @@ export default function AgenticChatbot({ activeListing = null, initialDraft = ''
           <form onSubmit={(event) => { event.preventDefault(); sendMessage(); }}>
             {/* Deliberately editable while a reply is in flight — people compose
                 their next question as they read. Only sending is blocked. */}
-            <input
+            <textarea
               ref={inputRef}
+              rows={1}
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="Ask Vanguard anything..."
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Vanguard anything... (Shift+Enter for new line)"
               aria-label="Message Vanguard"
+              className="chat-composer-textarea"
             />
             <button
               type="submit"
